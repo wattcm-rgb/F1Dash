@@ -5,10 +5,10 @@ import raceIcon from '../icons/race_icon.png';
 import calendarIcon from '../icons/calendar_icon.png';
 
 const CARDS = [
+  { to: '/calendar',   icon: calendarIcon,   title: 'Calendar',   desc: 'Season schedule', sub: 'Timezones · Session times' },
   { to: '/practice',   icon: practiceIcon,   title: 'Practice',   desc: 'Live timing data', sub: 'Driver times · Tyre strategies' },
   { to: '/qualifying', icon: qualifyingIcon, title: 'Qualifying', desc: 'Q1 · Q2 · Q3 sessions', sub: 'Sector times · Eliminations' },
   { to: '/race',       icon: raceIcon,       title: 'Race',       desc: 'Live race tracking', sub: 'Gaps · Pit stops · Battles' },
-  { to: '/calendar',   icon: calendarIcon,   title: 'Calendar',   desc: 'Season schedule', sub: 'Timezones · Session times' },
 ];
 
 const FEATURES = [

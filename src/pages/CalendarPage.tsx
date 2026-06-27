@@ -1,21 +1,61 @@
 import { useState, useEffect } from 'react';
 import { jolpicaApi } from '../services/jolpicaApi';
-import { formatTimeInTimezone, commonTimezones } from '../utils/timezone';
+import { commonTimezones } from '../utils/timezone';
 
-interface Race {
+interface Session { date: string; time?: string; }
+
+interface RaceData {
   season: string;
   round: string;
   raceName: string;
   date: string;
   time?: string;
-  circuit?: {
+  Circuit?: {
     circuitName: string;
-    location?: { country: string; locality: string; };
+    Location?: { locality: string; country: string };
   };
+  FirstPractice?: Session;
+  SecondPractice?: Session;
+  ThirdPractice?: Session;
+  SprintQualifying?: Session;
+  SprintShootout?: Session;
+  Sprint?: Session;
+  Qualifying?: Session;
+}
+
+// "Fri 13:30" in the chosen timezone, 24h
+function fmtSession(s: Session | undefined, tz: string): string {
+  if (!s?.date) return '—';
+  const iso = s.time ? `${s.date}T${s.time}` : `${s.date}T00:00:00Z`;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(d);
+    const wd = parts.find(p => p.type === 'weekday')?.value ?? '';
+    const hh = parts.find(p => p.type === 'hour')?.value ?? '';
+    const mm = parts.find(p => p.type === 'minute')?.value ?? '';
+    return s.time ? `${wd} ${hh}:${mm}` : wd;
+  } catch {
+    return '—';
+  }
+}
+
+// "27–29 Jun" or "30 May – 1 Jun"
+function weekendRange(race: RaceData): string {
+  const startStr = race.FirstPractice?.date ?? race.date;
+  const endStr = race.date;
+  const s = new Date(`${startStr}T00:00:00Z`);
+  const e = new Date(`${endStr}T00:00:00Z`);
+  if (isNaN(s.getTime()) || isNaN(e.getTime())) return endStr;
+  const mon = (d: Date) => new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', month: 'short' }).format(d);
+  const day = (d: Date) => d.getUTCDate();
+  return mon(s) === mon(e) ? `${day(s)}–${day(e)} ${mon(e)}` : `${day(s)} ${mon(s)} – ${day(e)} ${mon(e)}`;
 }
 
 export default function CalendarPage() {
-  const [races, setRaces] = useState<Race[]>([]);
+  const [races, setRaces] = useState<RaceData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [timezone, setTimezone] = useState('Europe/London');
@@ -29,11 +69,8 @@ export default function CalendarPage() {
       try {
         const data = await jolpicaApi.getRaces(currentYear);
         const list = data?.MRData?.RaceTable?.Races;
-        if (list?.length) {
-          setRaces(list);
-        } else {
-          setError('No race data returned. The Jolpica API may be temporarily unavailable.');
-        }
+        if (list?.length) setRaces(list);
+        else setError('No race data returned. The Jolpica API may be temporarily unavailable.');
       } catch {
         setError('Failed to fetch calendar. Check your internet connection.');
       } finally {
@@ -43,16 +80,9 @@ export default function CalendarPage() {
     load();
   }, [currentYear]);
 
-  function raceDate(race: Race): Date {
-    return new Date(`${race.date}T${race.time ?? '00:00:00'}`);
-  }
-
-  function formatRaceTime(race: Race): string {
-    if (!race.time) return race.date;
-    return formatTimeInTimezone(`${race.date}T${race.time}`, timezone);
-  }
-
+  const raceDate = (r: RaceData) => new Date(`${r.date}T${r.time ?? '00:00:00Z'}`);
   const nextRace = races.find(r => raceDate(r) > today);
+  const anySprint = races.some(r => r.Sprint);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -61,7 +91,7 @@ export default function CalendarPage() {
       <div className="glass" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <div>
           <div className="f1-heading" style={{ fontSize: 17, color: '#f1f5f9' }}>F1 Calendar {currentYear}</div>
-          <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>{races.length} races scheduled</div>
+          <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>{races.length} race weekends</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 12, color: '#475569' }}>Timezone</span>
@@ -75,13 +105,14 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* next race banner */}
+      {/* next race */}
       {nextRace && (
         <div style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: 8, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: '#a855f7', letterSpacing: '0.1em' }}>NEXT RACE</span>
           <span style={{ fontWeight: 700, color: '#f1f5f9' }}>Round {nextRace.round} · {nextRace.raceName}</span>
-          <span style={{ fontSize: 12, color: '#94a3b8' }}>{nextRace.circuit?.location?.locality ?? ''}{nextRace.circuit?.location?.country ? `, ${nextRace.circuit.location.country}` : ''}</span>
-          <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#c084fc', marginLeft: 'auto' }}>{formatRaceTime(nextRace)}</span>
+          <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#c084fc', marginLeft: 'auto' }}>
+            Lights out {fmtSession({ date: nextRace.date, time: nextRace.time }, timezone)}
+          </span>
         </div>
       )}
 
@@ -90,56 +121,64 @@ export default function CalendarPage() {
 
       {!loading && !error && races.length > 0 && (
         <div className="glass" style={{ overflow: 'hidden' }}>
+          <div style={{ padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: 11, color: '#334155' }}>
+            All times shown in {timezone} (24h)
+          </div>
           <div style={{ overflowX: 'auto' }}>
             <table className="timing-table">
               <thead>
                 <tr>
-                  <th style={{ width: 40 }}>Rnd</th>
-                  <th style={{ minWidth: 180, textAlign: 'left' }}>Race</th>
-                  <th style={{ textAlign: 'left' }}>Circuit</th>
-                  <th style={{ textAlign: 'left' }}>Country</th>
-                  <th style={{ textAlign: 'right' }}>Date</th>
-                  <th style={{ textAlign: 'right' }}>Race Time ({timezone})</th>
+                  <th style={{ width: 36 }}>Rnd</th>
+                  <th style={{ minWidth: 150, textAlign: 'left' }}>Grand Prix</th>
+                  <th style={{ minWidth: 140, textAlign: 'left' }}>Circuit</th>
+                  <th style={{ textAlign: 'left' }}>Weekend</th>
+                  <th>FP1</th>
+                  <th>FP2</th>
+                  <th>FP3</th>
+                  {anySprint && <th>Sprint</th>}
+                  <th>Quali</th>
+                  <th>Race</th>
                 </tr>
               </thead>
               <tbody>
                 {races.map(race => {
                   const isPast = raceDate(race) < today;
                   const isNext = race.round === nextRace?.round;
+                  const sessionCell = (s: Session | undefined, highlight?: boolean) => (
+                    <td>
+                      <span style={{ fontFamily: 'monospace', fontSize: 12, color: highlight ? (isNext ? '#c084fc' : '#cbd5e1') : '#64748b' }}>
+                        {fmtSession(s, timezone)}
+                      </span>
+                    </td>
+                  );
                   return (
                     <tr
                       key={race.round}
                       className="timing-row"
                       style={{
-                        opacity: isPast ? 0.45 : 1,
+                        opacity: isPast ? 0.5 : 1,
                         background: isNext ? 'rgba(168,85,247,0.08)' : undefined,
                         borderLeft: isNext ? '2px solid #a855f7' : '2px solid transparent',
                       }}
                     >
                       <td style={{ textAlign: 'left' }}>
-                        <span style={{ fontFamily: 'monospace', color: isNext ? '#c084fc' : '#475569', fontWeight: isNext ? 700 : 400 }}>
-                          {race.round}
-                        </span>
+                        <span style={{ fontFamily: 'monospace', color: isNext ? '#c084fc' : '#475569', fontWeight: isNext ? 700 : 400 }}>{race.round}</span>
                       </td>
                       <td style={{ textAlign: 'left' }}>
-                        <span style={{ fontWeight: 600, color: isNext ? '#f1f5f9' : isPast ? '#64748b' : '#cbd5e1', fontSize: 13 }}>
-                          {race.raceName}
-                        </span>
+                        <span style={{ fontWeight: 600, color: isNext ? '#f1f5f9' : isPast ? '#64748b' : '#cbd5e1', fontSize: 13 }}>{race.raceName}</span>
                       </td>
                       <td style={{ textAlign: 'left' }}>
-                        <span style={{ fontSize: 12, color: '#475569' }}>{race.circuit?.circuitName ?? '—'}</span>
+                        <span style={{ fontSize: 12, color: '#64748b' }}>{race.Circuit?.circuitName ?? '—'}</span>
                       </td>
                       <td style={{ textAlign: 'left' }}>
-                        <span style={{ fontSize: 12, color: '#475569' }}>{race.circuit?.location?.country ?? '—'}</span>
+                        <span style={{ fontSize: 12, color: '#94a3b8' }}>{weekendRange(race)}</span>
                       </td>
-                      <td>
-                        <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#64748b' }}>{race.date}</span>
-                      </td>
-                      <td>
-                        <span style={{ fontFamily: 'monospace', fontSize: 12, color: isNext ? '#c084fc' : isPast ? '#334155' : '#94a3b8' }}>
-                          {formatRaceTime(race)}
-                        </span>
-                      </td>
+                      {sessionCell(race.FirstPractice)}
+                      {sessionCell(race.SecondPractice)}
+                      {sessionCell(race.ThirdPractice)}
+                      {anySprint && sessionCell(race.Sprint, true)}
+                      {sessionCell(race.Qualifying, true)}
+                      {sessionCell({ date: race.date, time: race.time }, true)}
                     </tr>
                   );
                 })}

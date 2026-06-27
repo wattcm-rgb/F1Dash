@@ -6,10 +6,10 @@ import raceIcon from '../icons/race_icon.png';
 import calendarIcon from '../icons/calendar_icon.png';
 
 const NAV = [
+  { to: '/calendar',   label: 'Calendar',   icon: calendarIcon },
   { to: '/practice',   label: 'Practice',   icon: practiceIcon },
   { to: '/qualifying', label: 'Qualifying', icon: qualifyingIcon },
   { to: '/race',       label: 'Race',       icon: raceIcon },
-  { to: '/calendar',   label: 'Calendar',   icon: calendarIcon },
 ];
 
 export default function Layout() {
