@@ -32,10 +32,10 @@ export default function Layout() {
         {/* logo */}
         <div style={{ padding: '0 20px 24px' }}>
           <Link to="/" style={{ textDecoration: 'none' }}>
-            <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase', background: 'linear-gradient(90deg, #06b6d4, #a855f7, #ef4444)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-              F1 Dash
+            <div style={{ fontFamily: "'Formula1', system-ui, sans-serif", fontSize: 18, fontWeight: 700, letterSpacing: '0.02em', background: 'linear-gradient(90deg, #06b6d4, #a855f7, #ef4444)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: 1.1 }}>
+              F1 Dashboard
             </div>
-            <div style={{ fontSize: 9, color: '#475569', letterSpacing: '0.1em', textTransform: 'uppercase', marginTop: 2 }}>
+            <div style={{ fontSize: 9, color: '#475569', letterSpacing: '0.1em', textTransform: 'uppercase', marginTop: 4 }}>
               Live Timing Dashboard
             </div>
           </Link>
