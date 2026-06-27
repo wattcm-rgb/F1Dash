@@ -144,9 +144,9 @@ export default function CalendarPage() {
                 {races.map(race => {
                   const isPast = raceDate(race) < today;
                   const isNext = race.round === nextRace?.round;
-                  const sessionCell = (s: Session | undefined, highlight?: boolean) => (
+                  const sessionCell = (s: Session | undefined) => (
                     <td>
-                      <span style={{ fontFamily: 'monospace', fontSize: 12, color: highlight ? (isNext ? '#c084fc' : '#cbd5e1') : '#64748b' }}>
+                      <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#cbd5e1' }}>
                         {fmtSession(s, timezone)}
                       </span>
                     </td>
@@ -165,20 +165,20 @@ export default function CalendarPage() {
                         <span style={{ fontFamily: 'monospace', color: isNext ? '#c084fc' : '#475569', fontWeight: isNext ? 700 : 400 }}>{race.round}</span>
                       </td>
                       <td style={{ textAlign: 'left' }}>
-                        <span style={{ fontWeight: 600, color: isNext ? '#f1f5f9' : isPast ? '#64748b' : '#cbd5e1', fontSize: 13 }}>{race.raceName}</span>
+                        <span style={{ fontWeight: 600, color: '#f8fafc', fontSize: 13 }}>{race.raceName}</span>
                       </td>
                       <td style={{ textAlign: 'left' }}>
-                        <span style={{ fontSize: 12, color: '#64748b' }}>{race.Circuit?.circuitName ?? '—'}</span>
+                        <span style={{ fontSize: 12, color: '#f8fafc', fontWeight: 500 }}>{race.Circuit?.circuitName ?? '—'}</span>
                       </td>
                       <td style={{ textAlign: 'left' }}>
-                        <span style={{ fontSize: 12, color: '#94a3b8' }}>{weekendRange(race)}</span>
+                        <span style={{ fontSize: 12, color: '#cbd5e1' }}>{weekendRange(race)}</span>
                       </td>
                       {sessionCell(race.FirstPractice)}
                       {sessionCell(race.SecondPractice)}
                       {sessionCell(race.ThirdPractice)}
-                      {anySprint && sessionCell(race.Sprint, true)}
-                      {sessionCell(race.Qualifying, true)}
-                      {sessionCell({ date: race.date, time: race.time }, true)}
+                      {anySprint && sessionCell(race.Sprint)}
+                      {sessionCell(race.Qualifying)}
+                      {sessionCell({ date: race.date, time: race.time })}
                     </tr>
                   );
                 })}
