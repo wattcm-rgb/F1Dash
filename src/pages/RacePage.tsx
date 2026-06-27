@@ -7,6 +7,17 @@ type Tab = 'LAP' | 'SECTOR' | 'TYRE' | 'PIT';
 const TYRE_COLOUR: Record<string, string> = { SOFT: '#f87171', MEDIUM: '#facc15', HARD: '#e2e8f0', INTERMEDIATE: '#4ade80', WET: '#60a5fa', UNKNOWN: '#64748b' };
 const TYRE_LABEL: Record<string, string> = { SOFT: 'S', MEDIUM: 'M', HARD: 'H', INTERMEDIATE: 'I', WET: 'W', UNKNOWN: '?' };
 
+// Scheduled race distance per circuit, keyed by OpenF1 circuit_short_name.
+// Used for "laps left" — observed lap data can't tell us the total, so circuits
+// not listed here simply hide the laps-left card rather than show a wrong value.
+const RACE_LAPS: Record<string, number> = {
+  Sakhir: 57, Jeddah: 50, Melbourne: 58, Suzuka: 53, Shanghai: 56, Miami: 57,
+  Imola: 63, Monaco: 78, Catalunya: 66, Montreal: 70, Spielberg: 71,
+  Silverstone: 52, Hungaroring: 70, 'Spa-Francorchamps': 44, Zandvoort: 72,
+  Monza: 53, Baku: 51, 'Marina Bay': 62, Singapore: 62, Austin: 56,
+  'Mexico City': 71, Interlagos: 71, 'Las Vegas': 50, Lusail: 57, 'Yas Marina': 58,
+};
+
 function fmtTime(s: number | null) { if (s == null) return '—'; const m = Math.floor(s / 60); return m > 0 ? `${m}:${(s % 60).toFixed(3).padStart(6, '0')}` : (s % 60).toFixed(3); }
 function sectorClass(v: number | null, pb: number | null, ob: number | null) { if (v == null) return 'white'; if (ob != null && v <= ob) return 'purple'; if (pb != null && v <= pb) return 'green'; return 'yellow'; }
 
@@ -101,8 +112,6 @@ export default function RacePage() {
     ]);
     if (drivers.length) {
       setRows(buildRows(drivers, laps, stints, pits, ivs));
-      const max = laps.length ? Math.max(...laps.map((l: OpenF1Lap) => l.lap_number)) : 0;
-      if (max > 0) setTotalLaps(prev => prev ?? max);
     }
     if (wx.length) setWeather(wx[wx.length - 1]);
     if (rc.length) setRcMsgs([...rc].reverse().slice(0, 8));
@@ -120,6 +129,7 @@ export default function RacePage() {
         const s = all.find(sess => sess.session_key === selectedKey);
         if (!s) { setError('Session not found.'); setLoading(false); return; }
         setSession(s);
+        setTotalLaps(RACE_LAPS[s.circuit_short_name] ?? null);
         const key = selectedKey as number;
         await fetchData(key);
         const live = s.date_end ? new Date(s.date_end) > new Date() : false;
