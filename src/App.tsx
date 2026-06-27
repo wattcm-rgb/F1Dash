@@ -8,7 +8,7 @@ import Layout from './components/Layout';
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/F1Dash">
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<HomePage />} />
