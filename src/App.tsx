@@ -1,0 +1,23 @@
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import HomePage from './pages/HomePage';
+import CalendarPage from './pages/CalendarPage';
+import PracticePage from './pages/PracticePage';
+import QualifyingPage from './pages/QualifyingPage';
+import RacePage from './pages/RacePage';
+import Layout from './components/Layout';
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/calendar" element={<CalendarPage />} />
+          <Route path="/practice" element={<PracticePage />} />
+          <Route path="/qualifying" element={<QualifyingPage />} />
+          <Route path="/race" element={<RacePage />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
+  );
+}
