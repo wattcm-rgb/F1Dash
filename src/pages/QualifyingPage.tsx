@@ -2,412 +2,276 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { openf1Api } from '../services/openf1Api';
 import type { OpenF1Session, OpenF1Driver, OpenF1Lap, OpenF1Stint, OpenF1Weather } from '../types/openf1';
 
-// ─── helpers ────────────────────────────────────────────────────────────────
+type Tab = 'LAP' | 'SECTOR' | 'TYRE';
 
 const TYRE_COLOUR: Record<string, string> = {
-  SOFT: 'text-red-400', MEDIUM: 'text-yellow-400', HARD: 'text-gray-200',
-  INTERMEDIATE: 'text-green-400', WET: 'text-blue-400', UNKNOWN: 'text-slate-500',
+  SOFT: '#f87171', MEDIUM: '#facc15', HARD: '#e2e8f0',
+  INTERMEDIATE: '#4ade80', WET: '#60a5fa', UNKNOWN: '#64748b',
 };
 const TYRE_LABEL: Record<string, string> = {
   SOFT: 'S', MEDIUM: 'M', HARD: 'H', INTERMEDIATE: 'I', WET: 'W', UNKNOWN: '?',
 };
+const CUT: Record<string, number> = { 'Q1': 15, 'Q2': 10 };
 
-function fmtTime(s: number | null): string {
-  if (s == null) return '—';
-  const m = Math.floor(s / 60);
-  const rest = (s % 60).toFixed(3).padStart(6, '0');
-  return m > 0 ? `${m}:${rest}` : rest;
+function fmtTime(s: number | null) { if (s == null) return '—'; const m = Math.floor(s / 60); return m > 0 ? `${m}:${(s % 60).toFixed(3).padStart(6, '0')}` : (s % 60).toFixed(3).padStart(6, '0'); }
+function sectorClass(v: number | null, pb: number | null, ob: number | null) { if (v == null) return 'white'; if (ob != null && v <= ob) return 'purple'; if (pb != null && v <= pb) return 'green'; return 'yellow'; }
+
+interface Row {
+  pos: number; driver: OpenF1Driver; bestLap: number | null; gap: number | null;
+  s1: number | null; s2: number | null; s3: number | null;
+  s1c: string; s2c: string; s3c: string;
+  compound: string; laps: number; eliminated: boolean; inPit: boolean;
 }
 
-function fmtGap(delta: number | null): string {
-  if (delta == null || delta === 0) return '';
-  return `+${delta.toFixed(3)}`;
-}
-
-// Q segment a lap belongs to based on timing (lap_number heuristic via date)
-// OpenF1 sessions for qualifying are separate session_keys (Q1/Q2/Q3)
-// so we just use the session_name.
-
-// ─── types ──────────────────────────────────────────────────────────────────
-
-interface QualRow {
-  pos: number;
-  driver: OpenF1Driver;
-  bestLap: number | null;
-  gap: number | null;
-  s1: number | null;
-  s2: number | null;
-  s3: number | null;
-  s1Colour: string;
-  s2Colour: string;
-  s3Colour: string;
-  compound: string;
-  laps: number;
-  eliminated: boolean; // knocked out in this segment
-}
-
-interface MeetingOption {
-  label: string;         // "Round 1 — Bahrain GP"
-  sessionKeys: {         // one per Q segment present
-    name: string;        // "Qualifying" | "Sprint Qualifying"
-    key: number;
-  }[];
-}
-
-// ─── sector colour logic ────────────────────────────────────────────────────
-
-function sectorColour(
-  value: number | null,
-  personalBest: number | null,
-  overallBest: number | null,
-): string {
-  if (value == null) return 'text-slate-400';
-  if (overallBest != null && value <= overallBest) return 'text-purple-400 font-bold';
-  if (personalBest != null && value <= personalBest) return 'text-green-400';
-  return 'text-yellow-400';
-}
-
-// ─── build leaderboard from raw laps ────────────────────────────────────────
-
-function buildRows(
-  drivers: OpenF1Driver[],
-  laps: OpenF1Lap[],
-  stints: OpenF1Stint[],
-  eliminatedNums: Set<number>,
-): QualRow[] {
-  // overall best sectors across all drivers
-  const allS1 = laps.map(l => l.duration_sector_1).filter((v): v is number => v != null);
-  const allS2 = laps.map(l => l.duration_sector_2).filter((v): v is number => v != null);
-  const allS3 = laps.map(l => l.duration_sector_3).filter((v): v is number => v != null);
-  const bestS1 = allS1.length ? Math.min(...allS1) : null;
-  const bestS2 = allS2.length ? Math.min(...allS2) : null;
-  const bestS3 = allS3.length ? Math.min(...allS3) : null;
-
-  const rows: QualRow[] = drivers.map(driver => {
-    const dLaps = laps.filter(l => l.driver_number === driver.driver_number && l.lap_duration != null && !l.is_pit_out_lap);
-    const bestLap = dLaps.length ? Math.min(...dLaps.map(l => l.lap_duration!)) : null;
-    const lastLap = laps.filter(l => l.driver_number === driver.driver_number).slice(-1)[0];
-
-    const myS1 = dLaps.map(l => l.duration_sector_1).filter((v): v is number => v != null);
-    const myS2 = dLaps.map(l => l.duration_sector_2).filter((v): v is number => v != null);
-    const myS3 = dLaps.map(l => l.duration_sector_3).filter((v): v is number => v != null);
-    const pbS1 = myS1.length ? Math.min(...myS1) : null;
-    const pbS2 = myS2.length ? Math.min(...myS2) : null;
-    const pbS3 = myS3.length ? Math.min(...myS3) : null;
-
-    const curS1 = lastLap?.duration_sector_1 ?? null;
-    const curS2 = lastLap?.duration_sector_2 ?? null;
-    const curS3 = lastLap?.duration_sector_3 ?? null;
-
-    const driverStints = stints.filter(s => s.driver_number === driver.driver_number);
-    const currentStint = driverStints.sort((a, b) => b.stint_number - a.stint_number)[0];
-
+function buildRows(drivers: OpenF1Driver[], laps: OpenF1Lap[], stints: OpenF1Stint[], elim: Set<number>): Row[] {
+  const obS1 = Math.min(...laps.map(l => l.duration_sector_1).filter((v): v is number => v != null));
+  const obS2 = Math.min(...laps.map(l => l.duration_sector_2).filter((v): v is number => v != null));
+  const obS3 = Math.min(...laps.map(l => l.duration_sector_3).filter((v): v is number => v != null));
+  const rows: Row[] = drivers.map(d => {
+    const dl = laps.filter(l => l.driver_number === d.driver_number);
+    const valid = dl.filter(l => l.lap_duration != null && !l.is_pit_out_lap);
+    const best = valid.length ? Math.min(...valid.map(l => l.lap_duration!)) : null;
+    const last = dl[dl.length - 1];
+    const myS1s = valid.map(l => l.duration_sector_1).filter((v): v is number => v != null);
+    const myS2s = valid.map(l => l.duration_sector_2).filter((v): v is number => v != null);
+    const myS3s = valid.map(l => l.duration_sector_3).filter((v): v is number => v != null);
+    const pbS1 = myS1s.length ? Math.min(...myS1s) : null;
+    const pbS2 = myS2s.length ? Math.min(...myS2s) : null;
+    const pbS3 = myS3s.length ? Math.min(...myS3s) : null;
+    const s1 = last?.duration_sector_1 ?? null;
+    const s2 = last?.duration_sector_2 ?? null;
+    const s3 = last?.duration_sector_3 ?? null;
+    const ds = stints.filter(s => s.driver_number === d.driver_number).sort((a, b) => b.stint_number - a.stint_number);
     return {
-      pos: 0,
-      driver,
-      bestLap,
-      gap: null,
-      s1: curS1,
-      s2: curS2,
-      s3: curS3,
-      s1Colour: sectorColour(curS1, pbS1, bestS1),
-      s2Colour: sectorColour(curS2, pbS2, bestS2),
-      s3Colour: sectorColour(curS3, pbS3, bestS3),
-      compound: currentStint?.compound ?? 'UNKNOWN',
-      laps: laps.filter(l => l.driver_number === driver.driver_number).length,
-      eliminated: eliminatedNums.has(driver.driver_number),
+      pos: 0, driver: d, bestLap: best, gap: null, s1, s2, s3,
+      s1c: sectorClass(s1, pbS1, isFinite(obS1) ? obS1 : null),
+      s2c: sectorClass(s2, pbS2, isFinite(obS2) ? obS2 : null),
+      s3c: sectorClass(s3, pbS3, isFinite(obS3) ? obS3 : null),
+      compound: ds[0]?.compound ?? 'UNKNOWN', laps: dl.length,
+      eliminated: elim.has(d.driver_number), inPit: last?.is_pit_out_lap ?? false,
     };
   });
-
-  rows.sort((a, b) => {
-    if (a.bestLap == null) return 1;
-    if (b.bestLap == null) return -1;
-    return a.bestLap - b.bestLap;
-  });
-
-  const leaderTime = rows[0]?.bestLap ?? null;
-  rows.forEach((r, i) => {
-    r.pos = i + 1;
-    r.gap = r.bestLap != null && leaderTime != null && i > 0 ? r.bestLap - leaderTime : null;
-  });
-
+  rows.sort((a, b) => { if (a.bestLap == null) return 1; if (b.bestLap == null) return -1; return a.bestLap - b.bestLap; });
+  const leader = rows[0]?.bestLap ?? null;
+  rows.forEach((r, i) => { r.pos = i + 1; r.gap = i > 0 && r.bestLap != null && leader != null ? r.bestLap - leader : null; });
   return rows;
 }
 
-// ─── component ───────────────────────────────────────────────────────────────
-
-const CUT_LINES: Record<string, number> = { 'Q1': 15, 'Q2': 10 };
+interface Meeting { label: string; sessionKeys: { name: string; key: number }[]; }
 
 export default function QualifyingPage() {
-  const [meetings, setMeetings] = useState<MeetingOption[]>([]);
-  const [selectedMeeting, setSelectedMeeting] = useState<MeetingOption | null>(null);
-  const [activeSession, setActiveSession] = useState<OpenF1Session | null>(null);
-  const [rows, setRows] = useState<QualRow[]>([]);
+  const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [selected, setSelected] = useState<Meeting | null>(null);
+  const [session, setSession] = useState<OpenF1Session | null>(null);
+  const [rows, setRows] = useState<Row[]>([]);
   const [weather, setWeather] = useState<OpenF1Weather | null>(null);
+  const [tab, setTab] = useState<Tab>('LAP');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [updated, setUpdated] = useState<Date | null>(null);
   const [isLive, setIsLive] = useState(false);
   const intervalRef = useRef<number | null>(null);
 
-  // ── fetch all qualifying sessions this year, group by meeting ─────────────
   useEffect(() => {
-    async function loadMeetings() {
+    async function load() {
       try {
         const year = new Date().getFullYear();
         const sessions: OpenF1Session[] = await openf1Api.getSessionsByYear(year);
-        const qualSessions = sessions.filter(s =>
-          s.session_type === 'Qualifying' || s.session_name?.toLowerCase().includes('qualifying')
-        );
-
-        // group by meeting_name
-        const map = new Map<string, MeetingOption>();
-        for (const s of qualSessions) {
-          const key = s.meeting_name;
-          if (!map.has(key)) map.set(key, { label: s.meeting_name, sessionKeys: [] });
-          map.get(key)!.sessionKeys.push({ name: s.session_name, key: s.session_key });
+        const qual = sessions.filter(s => s.session_type === 'Qualifying' || s.session_name?.toLowerCase().includes('qualifying'));
+        const map = new Map<string, Meeting>();
+        for (const s of qual) {
+          if (!map.has(s.meeting_name)) map.set(s.meeting_name, { label: s.meeting_name, sessionKeys: [] });
+          map.get(s.meeting_name)!.sessionKeys.push({ name: s.session_name, key: s.session_key });
         }
-
         const opts = Array.from(map.values());
         setMeetings(opts);
-        if (opts.length) {
-          // default to most recent
-          setSelectedMeeting(opts[opts.length - 1]);
-        }
-      } catch {
-        setError('Failed to load sessions from OpenF1 server.');
-      }
+        if (opts.length) setSelected(opts[opts.length - 1]);
+      } catch { setError('Failed to load sessions.'); setLoading(false); }
     }
-    loadMeetings();
+    load();
   }, []);
 
-  // ── fetch timing for selected meeting ─────────────────────────────────────
-  const fetchSessionData = useCallback(async (session: OpenF1Session) => {
-    const [laps, stints, drivers, weatherData] = await Promise.all([
-      openf1Api.getLaps(session.session_key),
-      openf1Api.getStints(session.session_key),
-      openf1Api.getDriversBySession(session.session_key),
-      openf1Api.getWeather(session.session_key),
+  const fetchData = useCallback(async (s: OpenF1Session) => {
+    const [laps, stints, drivers, wx] = await Promise.all([
+      openf1Api.getLaps(s.session_key), openf1Api.getStints(s.session_key),
+      openf1Api.getDriversBySession(s.session_key), openf1Api.getWeather(s.session_key),
     ]);
-
     if (!drivers.length) return;
-
-    // Determine eliminated drivers: those ranked below cut line
     const allRows = buildRows(drivers, laps, stints, new Set());
-    const cutLine = CUT_LINES[session.session_name] ?? 0;
-    const eliminated = new Set(
-      cutLine > 0 ? allRows.slice(cutLine).map(r => r.driver.driver_number) : []
-    );
-
-    setRows(buildRows(drivers, laps, stints, eliminated));
-    if (weatherData.length) setWeather(weatherData[weatherData.length - 1]);
-    setLastUpdated(new Date());
+    const cut = CUT[s.session_name] ?? 0;
+    const elim = new Set(cut > 0 ? allRows.slice(cut).map(r => r.driver.driver_number) : []);
+    setRows(buildRows(drivers, laps, stints, elim));
+    if (wx.length) setWeather(wx[wx.length - 1]);
+    setUpdated(new Date());
   }, []);
 
   useEffect(() => {
-    if (!selectedMeeting) return;
-
-    // clear previous poll
+    if (!selected) return;
     if (intervalRef.current) clearInterval(intervalRef.current);
-    setRows([]);
-    setLoading(true);
-    setError(null);
-    setIsLive(false);
-
+    setRows([]); setLoading(true); setError(null); setIsLive(false);
     async function load() {
       try {
-        // Get full session objects for this meeting
         const year = new Date().getFullYear();
-        const allSessions: OpenF1Session[] = await openf1Api.getSessionsByYear(year);
-        const meetingSessions = allSessions.filter(
-          s => s.meeting_name === selectedMeeting!.label &&
-            (s.session_type === 'Qualifying' || s.session_name?.toLowerCase().includes('qualifying'))
-        );
-        if (!meetingSessions.length) {
-          setError('No qualifying data found for this event.');
-          setLoading(false);
-          return;
-        }
-
-        // Use the last qualifying session (Q3 if available, else what exists)
-        const session = meetingSessions[meetingSessions.length - 1];
-        setActiveSession(session);
-
-        await fetchSessionData(session);
-
-        // Check if live: date_end is in the future
-        const isSessionLive = session.date_end ? new Date(session.date_end) > new Date() : false;
-        setIsLive(isSessionLive);
-
-        if (isSessionLive) {
-          intervalRef.current = window.setInterval(() => fetchSessionData(session), 4000);
-        }
-      } catch {
-        setError('Failed to load qualifying data.');
-      } finally {
-        setLoading(false);
-      }
+        const all: OpenF1Session[] = await openf1Api.getSessionsByYear(year);
+        const sess = all.filter(s => s.meeting_name === selected!.label && (s.session_type === 'Qualifying' || s.session_name?.toLowerCase().includes('qualifying')));
+        if (!sess.length) { setError('No qualifying data found.'); setLoading(false); return; }
+        const s = sess[sess.length - 1];
+        setSession(s);
+        await fetchData(s);
+        const live = s.date_end ? new Date(s.date_end) > new Date() : false;
+        setIsLive(live);
+        if (live) intervalRef.current = window.setInterval(() => fetchData(s), 4000);
+      } catch { setError('Failed to load qualifying data.'); }
+      finally { setLoading(false); }
     }
-
     load();
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [selectedMeeting, fetchSessionData]);
+  }, [selected, fetchData]);
 
-  const sessionName = activeSession?.session_name ?? 'Qualifying';
-  const cutLine = CUT_LINES[sessionName] ?? 0;
-  const fastestLap = rows[0]?.bestLap ?? null;
+  const cutLine = CUT[session?.session_name ?? ''] ?? 0;
 
   return (
-    <div className="p-4 space-y-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-      {/* ── header ── */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      {/* header */}
+      <div className="glass" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            Qualifying
-            {isLive && (
-              <span className="text-xs bg-red-600 text-white px-2 py-0.5 rounded font-normal animate-pulse">
-                LIVE
-              </span>
-            )}
-          </h1>
-          {activeSession && (
-            <p className="text-slate-400 text-sm mt-1">
-              {activeSession.meeting_name} · {activeSession.circuit_short_name} · {activeSession.country_name}
-            </p>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9' }}>
+              {session ? `${session.meeting_name} · ${session.session_name}` : 'Qualifying'}
+            </span>
+            {isLive && <span style={{ fontSize: 10, background: 'rgba(239,68,68,0.2)', color: '#f87171', border: '1px solid rgba(239,68,68,0.4)', padding: '2px 7px', borderRadius: 4, fontWeight: 700 }}>LIVE</span>}
+          </div>
+          {session && <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>{session.circuit_short_name} · {session.country_name}</div>}
         </div>
-
-        <div className="flex items-center gap-3 flex-wrap">
-          {/* meeting selector */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           {meetings.length > 0 && (
             <select
-              className="bg-slate-800 border border-slate-600 text-white text-sm rounded px-3 py-1.5 cursor-pointer"
-              value={selectedMeeting?.label ?? ''}
-              onChange={e => setSelectedMeeting(meetings.find(m => m.label === e.target.value) ?? null)}
+              style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)', color: '#cbd5e1', fontSize: 12, padding: '5px 10px', borderRadius: 6, cursor: 'pointer' }}
+              value={selected?.label ?? ''}
+              onChange={e => setSelected(meetings.find(m => m.label === e.target.value) ?? null)}
             >
-              {meetings.map(m => (
-                <option key={m.label} value={m.label}>{m.label}</option>
-              ))}
+              {meetings.map(m => <option key={m.label} value={m.label}>{m.label}</option>)}
             </select>
           )}
-
-          {/* weather */}
           {weather && (
-            <div className="text-xs text-slate-300 text-right leading-5">
-              <div>Air <span className="text-white font-medium">{weather.air_temperature.toFixed(1)}°C</span></div>
-              <div>Track <span className="text-white font-medium">{weather.track_temperature.toFixed(1)}°C</span></div>
+            <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
+              <WeatherChip label="Air" value={`${weather.air_temperature.toFixed(1)}°C`} />
+              <WeatherChip label="Track" value={`${weather.track_temperature.toFixed(1)}°C`} />
             </div>
           )}
-
-          {lastUpdated && (
-            <div className="text-xs text-slate-500">
-              {isLive ? 'Live · ' : ''}Updated {lastUpdated.toLocaleTimeString()}
-            </div>
-          )}
+          {updated && <span style={{ fontSize: 11, color: '#334155' }}>{isLive ? 'Live · ' : ''}Updated {updated.toLocaleTimeString()}</span>}
         </div>
       </div>
 
-      {/* ── fastest lap banner ── */}
-      {fastestLap != null && (
-        <div className="bg-purple-900/40 border border-purple-700 rounded px-4 py-2 flex items-center gap-3">
-          <span className="text-purple-400 font-bold text-xs uppercase tracking-wide">Fastest</span>
-          <span className="text-white font-mono font-bold">{fmtTime(fastestLap)}</span>
-          <span className="text-slate-300 text-sm">{rows[0]?.driver.name_acronym}</span>
-          <span className="text-slate-500 text-xs">{rows[0]?.driver.team_name}</span>
+      {/* pole banner */}
+      {rows[0]?.bestLap && (
+        <div style={{ background: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: 8, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: '#a855f7', letterSpacing: '0.1em' }}>POLE POSITION</span>
+          <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 15, color: '#fff' }}>{fmtTime(rows[0].bestLap)}</span>
+          <span style={{ fontSize: 12, color: '#94a3b8' }}>{rows[0].driver.name_acronym} · {rows[0].driver.team_name}</span>
         </div>
       )}
 
-      {/* ── states ── */}
-      {loading && <div className="text-slate-400 py-16 text-center">Loading qualifying data…</div>}
-      {error && <div className="bg-red-900/40 border border-red-700 rounded p-4 text-red-300">{error}</div>}
-
-      {/* ── sector legend ── */}
-      {!loading && !error && rows.length > 0 && (
-        <div className="flex items-center gap-4 text-xs text-slate-400">
-          <span className="text-purple-400 font-bold">■</span> Overall best
-          <span className="text-green-400 font-bold">■</span> Personal best
-          <span className="text-yellow-400 font-bold">■</span> No improvement
+      {/* sector legend */}
+      {!loading && rows.length > 0 && (
+        <div style={{ display: 'flex', gap: 12, fontSize: 11, color: '#475569' }}>
+          <span><span style={{ color: '#c084fc' }}>■</span> Overall best</span>
+          <span><span style={{ color: '#4ade80' }}>■</span> Personal best</span>
+          <span><span style={{ color: '#facc15' }}>■</span> No improvement</span>
         </div>
       )}
 
-      {/* ── timing table ── */}
+      {loading && <div style={{ color: '#475569', padding: '60px 0', textAlign: 'center' }}>Loading qualifying data…</div>}
+      {error && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: 12, color: '#f87171', fontSize: 13 }}>{error}</div>}
+
       {!loading && !error && rows.length > 0 && (
-        <div className="overflow-x-auto rounded border border-slate-700">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-slate-400 text-xs uppercase border-b border-slate-700 bg-slate-900">
-                <th className="px-3 py-2 text-left w-8">Pos</th>
-                <th className="px-3 py-2 text-left">Driver</th>
-                <th className="px-3 py-2 text-right">Best Lap</th>
-                <th className="px-3 py-2 text-right">Gap</th>
-                <th className="px-3 py-2 text-right">S1</th>
-                <th className="px-3 py-2 text-right">S2</th>
-                <th className="px-3 py-2 text-right">S3</th>
-                <th className="px-3 py-2 text-center">Tyre</th>
-                <th className="px-3 py-2 text-right">Laps</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, i) => {
-                const isCutRow = cutLine > 0 && i === cutLine - 1;
-                const eliminated = row.eliminated;
-                return (
+        <div className="glass" style={{ overflow: 'hidden' }}>
+          <div style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div className="tab-bar">
+              {(['LAP', 'SECTOR', 'TYRE'] as Tab[]).map(t => (
+                <button key={t} className={`tab-btn${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>{t}</button>
+              ))}
+            </div>
+            <span style={{ fontSize: 11, color: '#334155' }}>{rows.length} drivers</span>
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table className="timing-table">
+              <thead>
+                <tr>
+                  <th style={{ width: 30 }}>Pos</th>
+                  <th style={{ minWidth: 110 }}>Driver</th>
+                  <th>Best Lap</th>
+                  <th>Gap</th>
+                  {tab === 'LAP' && <th>Laps</th>}
+                  {tab === 'SECTOR' && <><th>S1</th><th>S2</th><th>S3</th></>}
+                  {tab === 'TYRE' && <><th>Tyre</th><th>Laps</th></>}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, i) => (
                   <>
-                    <tr
-                      key={row.driver.driver_number}
-                      className={[
-                        'border-b border-slate-800 transition-colors',
-                        i === 0 ? 'bg-purple-950/30' : '',
-                        eliminated ? 'opacity-50' : 'hover:bg-slate-800/40',
-                      ].join(' ')}
-                    >
-                      <td className="px-3 py-2 font-mono text-slate-400">{row.pos}</td>
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="w-1 h-5 rounded-full flex-shrink-0"
-                            style={{ backgroundColor: `#${row.driver.team_colour || '555'}` }}
-                          />
-                          <span className="font-bold text-white">{row.driver.name_acronym}</span>
-                          <span className="text-slate-400 text-xs hidden md:inline">{row.driver.team_name}</span>
+                    <tr key={row.driver.driver_number} className={`timing-row${i === 0 ? ' p1' : ''}`} style={{ opacity: row.eliminated ? 0.45 : 1 }}>
+                      <td><span style={{ color: '#475569', fontFamily: 'monospace', fontSize: 12 }}>{row.pos}</span></td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                          <span style={{ width: 3, height: 20, borderRadius: 2, background: `#${row.driver.team_colour || '444'}`, flexShrink: 0 }} />
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: 13, color: '#f1f5f9' }}>{row.driver.name_acronym}</div>
+                            <div style={{ fontSize: 10, color: '#475569' }}>{row.driver.team_name}</div>
+                          </div>
+                          {row.inPit && <span className="badge-pit">PIT</span>}
+                          {row.eliminated && <span className="badge-ko">KO</span>}
                         </div>
                       </td>
-                      <td className="px-3 py-2 text-right font-mono font-bold text-white">{fmtTime(row.bestLap)}</td>
-                      <td className="px-3 py-2 text-right font-mono text-slate-300 text-xs">
-                        {row.gap != null ? fmtGap(row.gap) : <span className="text-purple-400 font-bold text-xs">POLE</span>}
+                      <td><span style={{ fontFamily: 'monospace', fontWeight: 700, color: i === 0 ? '#c084fc' : '#f1f5f9', fontSize: 13 }}>{fmtTime(row.bestLap)}</span></td>
+                      <td>
+                        {i === 0
+                          ? <span style={{ fontSize: 10, fontWeight: 700, color: '#a855f7' }}>POLE</span>
+                          : <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#94a3b8' }}>{row.gap != null ? `+${row.gap.toFixed(3)}` : '—'}</span>}
                       </td>
-                      <td className={`px-3 py-2 text-right font-mono text-xs ${row.s1Colour}`}>{row.s1 != null ? row.s1.toFixed(3) : '—'}</td>
-                      <td className={`px-3 py-2 text-right font-mono text-xs ${row.s2Colour}`}>{row.s2 != null ? row.s2.toFixed(3) : '—'}</td>
-                      <td className={`px-3 py-2 text-right font-mono text-xs ${row.s3Colour}`}>{row.s3 != null ? row.s3.toFixed(3) : '—'}</td>
-                      <td className="px-3 py-2 text-center">
-                        <span className={`font-bold ${TYRE_COLOUR[row.compound] ?? 'text-slate-500'}`}>
-                          {TYRE_LABEL[row.compound] ?? '?'}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-right text-slate-400">{row.laps}</td>
+                      {tab === 'LAP' && <td><span style={{ color: '#475569', fontSize: 12 }}>{row.laps}</span></td>}
+                      {tab === 'SECTOR' && (
+                        <>
+                          <td><span className={`sector-pill ${row.s1c}`}>{row.s1 != null ? row.s1.toFixed(3) : '—'}</span></td>
+                          <td><span className={`sector-pill ${row.s2c}`}>{row.s2 != null ? row.s2.toFixed(3) : '—'}</span></td>
+                          <td><span className={`sector-pill ${row.s3c}`}>{row.s3 != null ? row.s3.toFixed(3) : '—'}</span></td>
+                        </>
+                      )}
+                      {tab === 'TYRE' && (
+                        <>
+                          <td>
+                            <span style={{ fontWeight: 700, color: TYRE_COLOUR[row.compound] ?? '#64748b' }}>{TYRE_LABEL[row.compound]}</span>
+                            <span style={{ fontSize: 10, color: '#475569', marginLeft: 5 }}>{row.compound}</span>
+                          </td>
+                          <td><span style={{ color: '#475569', fontSize: 12 }}>{row.laps}</span></td>
+                        </>
+                      )}
                     </tr>
-                    {/* cut line separator */}
-                    {isCutRow && (
-                      <tr key={`cut-${i}`} className="border-b-2 border-red-800">
-                        <td colSpan={9}>
-                          <div className="px-3 py-0.5 text-xs text-red-500 font-medium">
-                            ── Eliminated below ──
-                          </div>
+                    {cutLine > 0 && i === cutLine - 1 && (
+                      <tr key={`cut-${i}`}>
+                        <td colSpan={10} style={{ padding: '2px 12px', background: 'rgba(239,68,68,0.08)', borderTop: '1px solid rgba(239,68,68,0.3)', borderBottom: '1px solid rgba(239,68,68,0.3)' }}>
+                          <span style={{ fontSize: 10, color: '#f87171', fontWeight: 700, letterSpacing: '0.08em' }}>── ELIMINATED BELOW ──</span>
                         </td>
                       </tr>
                     )}
                   </>
-                );
-              })}
-            </tbody>
-          </table>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
+    </div>
+  );
+}
 
-      {!loading && !error && rows.length === 0 && (
-        <div className="text-slate-400 py-16 text-center">No qualifying data available for this event.</div>
-      )}
+function WeatherChip({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ textAlign: 'center' }}>
+      <div style={{ fontSize: 10, color: '#475569' }}>{label}</div>
+      <div style={{ fontWeight: 600, color: '#cbd5e1' }}>{value}</div>
     </div>
   );
 }
