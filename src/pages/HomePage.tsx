@@ -45,7 +45,7 @@ export default function HomePage() {
         {CARDS.map(card => (
           <Link key={card.to} to={card.to} style={{ textDecoration: 'none' }}>
             <div className="glass home-card" style={{ padding: 20, height: '100%', display: 'flex', flexDirection: 'column', gap: 4, transition: 'transform 0.15s, border-color 0.15s' }}>
-              <img src={card.icon} alt="" style={{ width: 36, height: 36, marginBottom: 10, opacity: 0.9 }} />
+              <img src={card.icon} alt="" className="home-card-icon" style={{ width: 56, height: 56, marginBottom: 12 }} />
               <h2 className="f1-heading" style={{ fontSize: 18, margin: 0, color: '#f1f5f9' }}>{card.title}</h2>
               <p style={{ fontSize: 13, color: '#94a3b8', margin: 0 }}>{card.desc}</p>
               <p style={{ fontSize: 11, color: '#475569', margin: '6px 0 0' }}>{card.sub}</p>

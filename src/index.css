@@ -25,9 +25,17 @@ h1, h2, h3, h4, .f1-heading {
   letter-spacing: 0.01em;
 }
 
+.home-card-icon {
+  filter: drop-shadow(0 0 8px rgba(168,85,247,0.5));
+  transition: transform 0.15s, filter 0.15s;
+}
 .home-card:hover {
   transform: translateY(-3px);
   border-color: rgba(168,85,247,0.4) !important;
+}
+.home-card:hover .home-card-icon {
+  transform: scale(1.08);
+  filter: drop-shadow(0 0 12px rgba(168,85,247,0.8));
 }
 
 /* ── responsive shell ── */
@@ -83,8 +91,8 @@ h1, h2, h3, h4, .f1-heading {
     transition: color 0.15s;
   }
   .bottom-nav-item.active { color: #fff; }
-  .bottom-nav-item img { width: 22px; height: 22px; opacity: 0.55; transition: opacity 0.15s; }
-  .bottom-nav-item.active img { opacity: 1; }
+  .bottom-nav-item img { width: 28px; height: 28px; opacity: 0.7; transition: opacity 0.15s, filter 0.15s; }
+  .bottom-nav-item.active img { opacity: 1; filter: drop-shadow(0 0 5px rgba(168,85,247,0.7)); }
 }
 
 html, body {

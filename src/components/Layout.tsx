@@ -53,7 +53,7 @@ export default function Layout() {
                   fontSize: 13, fontWeight: active ? 600 : 400,
                   transition: 'all 0.15s',
                 }}>
-                  <img src={icon} alt="" style={{ width: 18, height: 18, opacity: active ? 1 : 0.6 }} />
+                  <img src={icon} alt="" style={{ width: 24, height: 24, opacity: active ? 1 : 0.75, filter: active ? 'drop-shadow(0 0 4px rgba(168,85,247,0.6))' : 'none' }} />
                   {label}
                 </div>
               </Link>
