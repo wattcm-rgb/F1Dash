@@ -5,16 +5,33 @@ import qualifyingIcon from '../icons/qualifying_icon.png';
 import raceIcon from '../icons/race_icon.png';
 import calendarIcon from '../icons/calendar_icon.png';
 
-const NAV = [
+interface NavItem { to: string; label: string; icon?: string; home?: boolean; }
+
+const NAV: NavItem[] = [
+  { to: '/',           label: 'Home',       home: true },
   { to: '/calendar',   label: 'Calendar',   icon: calendarIcon },
   { to: '/practice',   label: 'Practice',   icon: practiceIcon },
   { to: '/qualifying', label: 'Qualifying', icon: qualifyingIcon },
   { to: '/race',       label: 'Race',       icon: raceIcon },
 ];
 
+function HomeIcon({ size, active }: { size: number; active: boolean }) {
+  return (
+    <svg
+      width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+      style={{ filter: active ? 'drop-shadow(0 0 4px rgba(168,85,247,0.6))' : 'none' }}
+    >
+      <path d="M3 10.5 12 3l9 7.5" />
+      <path d="M5 9.5V21h14V9.5" />
+      <path d="M9.5 21v-6h5v6" />
+    </svg>
+  );
+}
+
 export default function Layout() {
   const { pathname } = useLocation();
-  const isActive = (to: string) => pathname === to || pathname.startsWith(to);
+  const isActive = (to: string) => to === '/' ? pathname === '/' : (pathname === to || pathname.startsWith(to));
 
   return (
     <div className="app-shell">
@@ -40,10 +57,10 @@ export default function Layout() {
         </div>
 
         <nav style={{ padding: '0 8px', flex: 1 }}>
-          {NAV.map(({ to, label, icon }) => {
-            const active = isActive(to);
+          {NAV.map(item => {
+            const active = isActive(item.to);
             return (
-              <Link key={to} to={to} style={{ textDecoration: 'none', display: 'block', marginBottom: 2 }}>
+              <Link key={item.to} to={item.to} style={{ textDecoration: 'none', display: 'block', marginBottom: 2 }}>
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 11,
                   padding: '9px 12px', borderRadius: 7,
@@ -53,8 +70,10 @@ export default function Layout() {
                   fontSize: 13, fontWeight: active ? 600 : 400,
                   transition: 'all 0.15s',
                 }}>
-                  <img src={icon} alt="" style={{ width: 24, height: 24, opacity: active ? 1 : 0.75, filter: active ? 'drop-shadow(0 0 4px rgba(168,85,247,0.6))' : 'none' }} />
-                  {label}
+                  {item.home
+                    ? <HomeIcon size={24} active={active} />
+                    : <img src={item.icon} alt="" style={{ width: 24, height: 24, opacity: active ? 1 : 0.75, filter: active ? 'drop-shadow(0 0 4px rgba(168,85,247,0.6))' : 'none' }} />}
+                  {item.label}
                 </div>
               </Link>
             );
@@ -78,12 +97,17 @@ export default function Layout() {
 
       {/* ── mobile bottom nav ── */}
       <nav className="bottom-nav">
-        {NAV.map(({ to, label, icon }) => (
-          <Link key={to} to={to} className={`bottom-nav-item${isActive(to) ? ' active' : ''}`}>
-            <img src={icon} alt="" />
-            {label}
-          </Link>
-        ))}
+        {NAV.map(item => {
+          const active = isActive(item.to);
+          return (
+            <Link key={item.to} to={item.to} className={`bottom-nav-item${active ? ' active' : ''}`}>
+              {item.home
+                ? <HomeIcon size={28} active={active} />
+                : <img src={item.icon} alt="" />}
+              {item.label}
+            </Link>
+          );
+        })}
       </nav>
     </div>
   );

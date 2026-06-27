@@ -128,8 +128,7 @@ export default function CalendarPage() {
             <table className="timing-table">
               <thead>
                 <tr>
-                  <th style={{ width: 36 }}>Rnd</th>
-                  <th style={{ minWidth: 150, textAlign: 'left' }}>Grand Prix</th>
+                  <th className="freeze-col" style={{ minWidth: 150, textAlign: 'left', background: '#0a0a1c' }}>Grand Prix</th>
                   <th style={{ minWidth: 140, textAlign: 'left' }}>Circuit</th>
                   <th style={{ textAlign: 'left' }}>Weekend</th>
                   <th>FP1</th>
@@ -161,11 +160,11 @@ export default function CalendarPage() {
                         borderLeft: isNext ? '2px solid #a855f7' : '2px solid transparent',
                       }}
                     >
-                      <td style={{ textAlign: 'left' }}>
-                        <span style={{ fontFamily: 'monospace', color: isNext ? '#c084fc' : '#475569', fontWeight: isNext ? 700 : 400 }}>{race.round}</span>
-                      </td>
-                      <td style={{ textAlign: 'left' }}>
-                        <span style={{ fontWeight: 600, color: '#f8fafc', fontSize: 13 }}>{race.raceName}</span>
+                      <td className="freeze-col" style={{ textAlign: 'left', background: isNext ? '#160e2b' : '#0a0a1c' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontFamily: 'monospace', fontSize: 11, color: isNext ? '#c084fc' : '#475569', fontWeight: 700, minWidth: 16 }}>{race.round}</span>
+                          <span style={{ fontWeight: 600, color: '#f8fafc', fontSize: 13 }}>{race.raceName}</span>
+                        </div>
                       </td>
                       <td style={{ textAlign: 'left' }}>
                         <span style={{ fontSize: 12, color: '#f8fafc', fontWeight: 500 }}>{race.Circuit?.circuitName ?? '—'}</span>

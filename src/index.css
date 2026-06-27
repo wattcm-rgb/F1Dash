@@ -25,6 +25,15 @@ h1, h2, h3, h4, .f1-heading {
   letter-spacing: 0.01em;
 }
 
+/* frozen first column for horizontally-scrolling tables */
+.timing-table .freeze-col {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  border-right: 1px solid rgba(255,255,255,0.1);
+}
+.timing-table thead .freeze-col { z-index: 3; }
+
 .home-card-icon {
   filter: drop-shadow(0 0 8px rgba(168,85,247,0.5));
   transition: transform 0.15s, filter 0.15s;
