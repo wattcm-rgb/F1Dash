@@ -1,14 +1,21 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { openf1Api } from '../services/openf1Api';
 import type { OpenF1Session, OpenF1Driver, OpenF1Lap, OpenF1Stint, OpenF1Weather } from '../types/openf1';
+import { TYRE_COLOUR, TYRE_LABEL, fmtTime, overallSectorBests, driverLapStats, sectorClasses, currentStint, tyreAge, placeholderDriver } from '../utils/timing';
+import WeatherChip from '../components/WeatherChip';
 
 type Tab = 'LAP' | 'SECTOR' | 'TYRE' | 'PIT';
 
-const TYRE_COLOUR: Record<string, string> = { SOFT: '#f87171', MEDIUM: '#facc15', HARD: '#e2e8f0', INTERMEDIATE: '#4ade80', WET: '#60a5fa', UNKNOWN: '#64748b' };
-const TYRE_LABEL: Record<string, string> = { SOFT: 'S', MEDIUM: 'M', HARD: 'H', INTERMEDIATE: 'I', WET: 'W', UNKNOWN: '?' };
-
-function fmtTime(s: number | null) { if (s == null) return '—'; const m = Math.floor(s / 60); return m > 0 ? `${m}:${(s % 60).toFixed(3).padStart(6, '0')}` : (s % 60).toFixed(3); }
-function sectorClass(v: number | null, pb: number | null, ob: number | null) { if (v == null) return 'white'; if (ob != null && v <= ob) return 'purple'; if (pb != null && v <= pb) return 'green'; return 'yellow'; }
+// Scheduled race distance per circuit, keyed by OpenF1 circuit_short_name.
+// Used for "laps left" — observed lap data can't tell us the total, so circuits
+// not listed here simply hide the laps-left card rather than show a wrong value.
+const RACE_LAPS: Record<string, number> = {
+  Sakhir: 57, Jeddah: 50, Melbourne: 58, Suzuka: 53, Shanghai: 56, Miami: 57,
+  Imola: 63, Monaco: 78, Catalunya: 66, Montreal: 70, Spielberg: 71,
+  Silverstone: 52, Hungaroring: 70, 'Spa-Francorchamps': 44, Zandvoort: 72,
+  Monza: 53, Baku: 51, 'Marina Bay': 62, Singapore: 62, Austin: 56,
+  'Mexico City': 71, Interlagos: 71, 'Las Vegas': 50, Lusail: 57, 'Yas Marina': 58,
+};
 
 interface PitStop { driver_number: number; lap_number: number; pit_duration: number | null; }
 interface RaceControlMsg { date: string; message: string; flag?: string; category?: string; }
@@ -26,40 +33,36 @@ interface Row {
 }
 
 function buildRows(drivers: OpenF1Driver[], laps: OpenF1Lap[], stints: OpenF1Stint[], pits: PitStop[], intervals: Interval[]): Row[] {
-  const obS1 = Math.min(...laps.map(l => l.duration_sector_1).filter((v): v is number => v != null));
-  const obS2 = Math.min(...laps.map(l => l.duration_sector_2).filter((v): v is number => v != null));
-  const obS3 = Math.min(...laps.map(l => l.duration_sector_3).filter((v): v is number => v != null));
+  const ob = overallSectorBests(laps);
   const latestIv = new Map(intervals.map(iv => [iv.driver_number, iv]));
+  const fmt = (v: number | string | null) => v == null ? '—' : typeof v === 'number' ? `+${v.toFixed(3)}` : String(v);
 
   return drivers.map(d => {
-    const dl = laps.filter(l => l.driver_number === d.driver_number);
-    const valid = dl.filter(l => l.lap_duration != null && !l.is_pit_out_lap);
-    const best = valid.length ? Math.min(...valid.map(l => l.lap_duration!)) : null;
-    const last = dl[dl.length - 1];
-    const myS1s = valid.map(l => l.duration_sector_1).filter((v): v is number => v != null);
-    const myS2s = valid.map(l => l.duration_sector_2).filter((v): v is number => v != null);
-    const myS3s = valid.map(l => l.duration_sector_3).filter((v): v is number => v != null);
-    const s1 = last?.duration_sector_1 ?? null; const s2 = last?.duration_sector_2 ?? null; const s3 = last?.duration_sector_3 ?? null;
-    const ds = stints.filter(s => s.driver_number === d.driver_number).sort((a, b) => b.stint_number - a.stint_number);
-    const cur = ds[0];
+    const st = driverLapStats(d.driver_number, laps);
+    const cur = currentStint(d.driver_number, stints);
+    const sc = sectorClasses(st, ob);
     const dp = pits.filter(p => p.driver_number === d.driver_number).sort((a, b) => b.lap_number - a.lap_number);
     const iv = latestIv.get(d.driver_number);
-    const fmt = (v: number | string | null) => v == null ? '—' : typeof v === 'number' ? `+${v.toFixed(3)}` : String(v);
     return {
       pos: 0, driver: d,
       gapToLeader: fmt(iv?.gap_to_leader ?? null), gapAhead: fmt(iv?.interval ?? null),
-      currentLap: dl.length, lastLap: last?.lap_duration ?? null, bestLap: best,
-      s1, s2, s3,
-      s1c: sectorClass(s1, myS1s.length ? Math.min(...myS1s) : null, isFinite(obS1) ? obS1 : null),
-      s2c: sectorClass(s2, myS2s.length ? Math.min(...myS2s) : null, isFinite(obS2) ? obS2 : null),
-      s3c: sectorClass(s3, myS3s.length ? Math.min(...myS3s) : null, isFinite(obS3) ? obS3 : null),
+      currentLap: st.lapsCount, lastLap: st.lastLap, bestLap: st.bestLap,
+      s1: st.s1, s2: st.s2, s3: st.s3, s1c: sc.s1c, s2c: sc.s2c, s3c: sc.s3c,
       compound: cur?.compound ?? 'UNKNOWN',
-      tyreAge: cur ? cur.tyre_age_at_start + (dl.length - (cur.lap_start - 1)) : 0,
+      tyreAge: tyreAge(cur, st.lapsCount),
       pitCount: dp.length, lastPitLap: dp[0]?.lap_number ?? null, lastPitDuration: dp[0]?.pit_duration ?? null,
-      inPit: last?.is_pit_out_lap ?? false,
+      inPit: st.inPit,
     };
   }).sort((a, b) => b.currentLap - a.currentLap).map((r, i) => ({ ...r, pos: i + 1 }));
 }
+
+// Empty rows so the layout is visible outside of a live race.
+const PREVIEW_ROWS: Row[] = Array.from({ length: 10 }, (_, i) => ({
+  pos: i + 1, driver: placeholderDriver(i + 1), gapToLeader: '—', gapAhead: '—',
+  currentLap: 0, lastLap: null, bestLap: null,
+  s1: null, s2: null, s3: null, s1c: 'white', s2c: 'white', s3c: 'white',
+  compound: 'UNKNOWN', tyreAge: 0, pitCount: 0, lastPitLap: null, lastPitDuration: null, inPit: false,
+}));
 
 interface Meeting { label: string; sessionKey: number; }
 
@@ -101,8 +104,6 @@ export default function RacePage() {
     ]);
     if (drivers.length) {
       setRows(buildRows(drivers, laps, stints, pits, ivs));
-      const max = laps.length ? Math.max(...laps.map((l: OpenF1Lap) => l.lap_number)) : 0;
-      if (max > 0) setTotalLaps(prev => prev ?? max);
     }
     if (wx.length) setWeather(wx[wx.length - 1]);
     if (rc.length) setRcMsgs([...rc].reverse().slice(0, 8));
@@ -120,6 +121,7 @@ export default function RacePage() {
         const s = all.find(sess => sess.session_key === selectedKey);
         if (!s) { setError('Session not found.'); setLoading(false); return; }
         setSession(s);
+        setTotalLaps(RACE_LAPS[s.circuit_short_name] ?? null);
         const key = selectedKey as number;
         await fetchData(key);
         const live = s.date_end ? new Date(s.date_end) > new Date() : false;
@@ -132,10 +134,12 @@ export default function RacePage() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [selectedKey, fetchData]);
 
-  const dA = rows.find(r => r.driver.driver_number === battleA);
-  const dB = rows.find(r => r.driver.driver_number === battleB);
+  const isPreview = !loading && !error && rows.length === 0;
+  const display = rows.length ? rows : PREVIEW_ROWS;
+  const dA = display.find(r => r.driver.driver_number === battleA);
+  const dB = display.find(r => r.driver.driver_number === battleB);
   const delta = dA?.bestLap != null && dB?.bestLap != null ? dA.bestLap - dB.bestLap : null;
-  const lapsLeft = totalLaps != null ? Math.max(0, totalLaps - (rows[0]?.currentLap ?? 0)) : null;
+  const lapsLeft = totalLaps != null ? Math.max(0, totalLaps - (display[0]?.currentLap ?? 0)) : null;
   const latestFlag = rcMsgs.find(m => m.flag || m.category === 'Flag');
 
   return (
@@ -162,11 +166,11 @@ export default function RacePage() {
               {meetings.map(m => <option key={m.sessionKey} value={m.sessionKey}>{m.label}</option>)}
             </select>
           )}
-          {weather && (
+          {!error && (
             <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
-              <WeatherChip label="Air" value={`${weather.air_temperature.toFixed(1)}°C`} />
-              <WeatherChip label="Track" value={`${weather.track_temperature.toFixed(1)}°C`} />
-              {weather.rainfall > 0 && <WeatherChip label="Rain" value={`${weather.rainfall.toFixed(1)}mm`} accent />}
+              <WeatherChip label="Air" value={weather ? `${weather.air_temperature.toFixed(1)}°C` : '—'} />
+              <WeatherChip label="Track" value={weather ? `${weather.track_temperature.toFixed(1)}°C` : '—'} />
+              {weather && weather.rainfall > 0 && <WeatherChip label="Rain" value={`${weather.rainfall.toFixed(1)}mm`} accent />}
             </div>
           )}
           {updated && <span style={{ fontSize: 11, color: '#334155' }}>{isLive ? 'Live · ' : ''}Updated {updated.toLocaleTimeString()}</span>}
@@ -175,10 +179,10 @@ export default function RacePage() {
 
       {/* status strip */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {lapsLeft != null && (
+        {(lapsLeft != null || isPreview) && (
           <div className="glass" style={{ padding: '8px 16px', textAlign: 'center' }}>
             <div style={{ fontSize: 10, color: '#475569', letterSpacing: '0.08em' }}>LAPS LEFT</div>
-            <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'monospace', color: '#f1f5f9', lineHeight: 1.2 }}>{lapsLeft}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'monospace', color: '#f1f5f9', lineHeight: 1.2 }}>{lapsLeft ?? '—'}</div>
             {totalLaps && <div style={{ fontSize: 10, color: '#334155' }}>of {totalLaps}</div>}
           </div>
         )}
@@ -189,11 +193,11 @@ export default function RacePage() {
             </span>
           </div>
         )}
-        {rows[0] && (
+        {(rows[0] || isPreview) && (
           <div className="glass" style={{ padding: '8px 16px' }}>
             <div style={{ fontSize: 10, color: '#475569' }}>LEADER</div>
-            <div style={{ fontWeight: 700, color: '#facc15' }}>{rows[0].driver.name_acronym}</div>
-            <div style={{ fontSize: 10, color: '#475569' }}>{rows[0].driver.team_name}</div>
+            <div style={{ fontWeight: 700, color: '#facc15' }}>{display[0]?.driver.name_acronym}</div>
+            <div style={{ fontSize: 10, color: '#475569' }}>{display[0]?.driver.team_name}</div>
           </div>
         )}
       </div>
@@ -201,8 +205,14 @@ export default function RacePage() {
       {loading && <div style={{ color: '#475569', padding: '60px 0', textAlign: 'center' }}>Loading race data…</div>}
       {error && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: 12, color: '#f87171', fontSize: 13 }}>{error}</div>}
 
-      {!loading && !error && rows.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 12, alignItems: 'start' }}>
+      {isPreview && (
+        <div style={{ background: 'rgba(148,163,184,0.08)', border: '1px solid rgba(148,163,184,0.18)', borderRadius: 8, padding: '8px 14px', color: '#94a3b8', fontSize: 12 }}>
+          Layout preview — no race data right now. These boxes populate during a race.
+        </div>
+      )}
+
+      {!loading && !error && (
+        <div className="race-layout" style={{ opacity: isPreview ? 0.55 : 1 }}>
 
           {/* timing table */}
           <div className="glass" style={{ overflow: 'hidden' }}>
@@ -212,7 +222,7 @@ export default function RacePage() {
                   <button key={t} className={`tab-btn${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>{t}</button>
                 ))}
               </div>
-              <span style={{ fontSize: 11, color: '#334155' }}>{rows.length} drivers</span>
+              <span style={{ fontSize: 11, color: '#334155' }}>{isPreview ? 'Preview' : `${rows.length} drivers`}</span>
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table className="timing-table">
@@ -229,7 +239,7 @@ export default function RacePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row, i) => (
+                  {display.map((row, i) => (
                     <tr key={row.driver.driver_number} className={`timing-row${i === 0 ? ' p1' : ''}`} style={{ opacity: row.inPit ? 0.6 : 1 }}>
                       <td><span style={{ color: '#475569', fontFamily: 'monospace', fontSize: 12 }}>{row.pos}</span></td>
                       <td>
@@ -298,7 +308,7 @@ export default function RacePage() {
                       onChange={e => idx === 0 ? setBattleA(e.target.value ? Number(e.target.value) : null) : setBattleB(e.target.value ? Number(e.target.value) : null)}
                     >
                       <option value="">Select</option>
-                      {rows.map(r => <option key={r.driver.driver_number} value={r.driver.driver_number}>P{r.pos} {r.driver.name_acronym}</option>)}
+                      {display.map(r => <option key={r.driver.driver_number} value={r.driver.driver_number}>P{r.pos} {r.driver.name_acronym}</option>)}
                     </select>
                   </div>
                 ))}
@@ -337,10 +347,11 @@ export default function RacePage() {
             </div>
 
             {/* race control */}
-            {rcMsgs.length > 0 && (
+            {(rcMsgs.length > 0 || isPreview) && (
               <div className="glass" style={{ padding: 14 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#475569', letterSpacing: '0.1em', marginBottom: 10 }}>RACE CONTROL</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 280, overflowY: 'auto' }}>
+                  {rcMsgs.length === 0 && <div style={{ fontSize: 12, color: '#334155' }}>No messages yet.</div>}
                   {rcMsgs.map((msg, i) => (
                     <div key={i} style={{
                       background: msg.flag === 'RED' ? 'rgba(239,68,68,0.1)' : msg.flag === 'YELLOW' || msg.message?.includes('SAFETY CAR') ? 'rgba(234,179,8,0.1)' : 'rgba(255,255,255,0.03)',
@@ -356,11 +367,11 @@ export default function RacePage() {
             )}
 
             {/* weather */}
-            {weather && (
+            {(weather || isPreview) && (
               <div className="glass" style={{ padding: 14 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#475569', letterSpacing: '0.1em', marginBottom: 10 }}>WEATHER</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                  {[['Air Temp', `${weather.air_temperature.toFixed(1)}°C`], ['Track Temp', `${weather.track_temperature.toFixed(1)}°C`], ['Humidity', `${weather.humidity.toFixed(0)}%`], ['Wind', `${weather.wind_speed.toFixed(1)} m/s`], ['Rainfall', weather.rainfall > 0 ? `${weather.rainfall.toFixed(1)}mm` : 'None'], ['Pressure', `${weather.pressure.toFixed(0)} hPa`]].map(([l, v]) => (
+                  {[['Air Temp', weather ? `${weather.air_temperature.toFixed(1)}°C` : '—'], ['Track Temp', weather ? `${weather.track_temperature.toFixed(1)}°C` : '—'], ['Humidity', weather ? `${weather.humidity.toFixed(0)}%` : '—'], ['Wind', weather ? `${weather.wind_speed.toFixed(1)} m/s` : '—'], ['Rainfall', weather ? (weather.rainfall > 0 ? `${weather.rainfall.toFixed(1)}mm` : 'None') : '—'], ['Pressure', weather ? `${weather.pressure.toFixed(0)} hPa` : '—']].map(([l, v]) => (
                     <div key={l} style={{ background: 'rgba(0,0,0,0.3)', borderRadius: 6, padding: '6px 8px' }}>
                       <div style={{ fontSize: 10, color: '#334155' }}>{l}</div>
                       <div style={{ fontSize: 13, fontWeight: 600, color: '#cbd5e1' }}>{v}</div>
@@ -372,15 +383,6 @@ export default function RacePage() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function WeatherChip({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div style={{ textAlign: 'center' }}>
-      <div style={{ fontSize: 10, color: '#475569' }}>{label}</div>
-      <div style={{ fontWeight: 600, color: accent ? '#60a5fa' : '#cbd5e1' }}>{value}</div>
     </div>
   );
 }

@@ -1,5 +1,9 @@
-// Self-hosted OpenF1 API running on VPS
-const OPENF1_BASE_URL = 'http://167.233.76.227:8000/v1';
+// Self-hosted OpenF1 API running on VPS.
+// NOTE: the site is served over HTTPS (GitHub Pages), so an http:// endpoint
+// here is blocked by the browser as mixed content. Point VITE_OPENF1_BASE_URL
+// at an https:// origin (TLS on the VPS, or a same-origin proxy) in production.
+const OPENF1_BASE_URL =
+  import.meta.env.VITE_OPENF1_BASE_URL ?? 'http://167.233.76.227:8000/v1';
 
 export const openf1Api = {
   async getSessions() {

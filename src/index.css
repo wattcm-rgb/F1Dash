@@ -69,6 +69,12 @@ h1, h2, h3, h4, .f1-heading {
 
 .main-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 
+/* race page: timing table + side column, stacks on narrow screens */
+.race-layout { display: grid; grid-template-columns: 1fr 320px; gap: 12px; align-items: start; }
+@media (max-width: 900px) {
+  .race-layout { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 768px) {
   .sidebar { display: none; }
   .topbar { display: none !important; }

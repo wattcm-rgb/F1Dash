@@ -89,7 +89,8 @@ export default function Layout() {
       {/* ── main area ── */}
       <div className="main-area">
         <main style={{ flex: 1, padding: 16, overflowY: 'auto' }}>
-          <ErrorBoundary>
+          {/* keyed by route so the boundary resets when navigating */}
+          <ErrorBoundary key={pathname}>
             <Outlet />
           </ErrorBoundary>
         </main>

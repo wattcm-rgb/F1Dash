@@ -53,17 +53,3 @@ export interface OpenF1Weather {
   wind_speed: number;
   wind_direction: number;
 }
-
-export interface DriverTimingRow {
-  driver: OpenF1Driver;
-  position: number;
-  bestLap: number | null;
-  lastLap: number | null;
-  gap: string;
-  s1: number | null;
-  s2: number | null;
-  s3: number | null;
-  compound: string;
-  tyreAge: number;
-  lapsCompleted: number;
-}

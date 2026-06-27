@@ -1,30 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { openf1Api } from '../services/openf1Api';
 import type { OpenF1Session, OpenF1Driver, OpenF1Lap, OpenF1Stint, OpenF1Weather } from '../types/openf1';
+import { TYRE_COLOUR, TYRE_LABEL, fmtTime, overallSectorBests, driverLapStats, sectorClasses, currentStint, tyreAge, rankByBestLap, placeholderDriver } from '../utils/timing';
+import WeatherChip from '../components/WeatherChip';
 
 type Tab = 'LAP' | 'SECTOR' | 'TYRE';
-
-const TYRE_COLOUR: Record<string, string> = {
-  SOFT: '#f87171', MEDIUM: '#facc15', HARD: '#e2e8f0',
-  INTERMEDIATE: '#4ade80', WET: '#60a5fa', UNKNOWN: '#64748b',
-};
-const TYRE_LABEL: Record<string, string> = {
-  SOFT: 'S', MEDIUM: 'M', HARD: 'H', INTERMEDIATE: 'I', WET: 'W', UNKNOWN: '?',
-};
-
-function fmtTime(s: number | null): string {
-  if (s == null) return '—';
-  const m = Math.floor(s / 60);
-  const rest = (s % 60).toFixed(3).padStart(6, '0');
-  return m > 0 ? `${m}:${rest}` : rest;
-}
-
-function sectorClass(v: number | null, pb: number | null, ob: number | null): string {
-  if (v == null) return 'white';
-  if (ob != null && v <= ob) return 'purple';
-  if (pb != null && v <= pb) return 'green';
-  return 'yellow';
-}
 
 interface Row {
   pos: number;
@@ -42,45 +22,31 @@ interface Row {
 }
 
 function buildRows(drivers: OpenF1Driver[], laps: OpenF1Lap[], stints: OpenF1Stint[]): Row[] {
-  const obS1 = Math.min(...laps.map(l => l.duration_sector_1).filter((v): v is number => v != null));
-  const obS2 = Math.min(...laps.map(l => l.duration_sector_2).filter((v): v is number => v != null));
-  const obS3 = Math.min(...laps.map(l => l.duration_sector_3).filter((v): v is number => v != null));
-
+  const ob = overallSectorBests(laps);
   const rows: Row[] = drivers.map(d => {
-    const dl = laps.filter(l => l.driver_number === d.driver_number);
-    const valid = dl.filter(l => l.lap_duration != null && !l.is_pit_out_lap);
-    const best = valid.length ? Math.min(...valid.map(l => l.lap_duration!)) : null;
-    const last = dl[dl.length - 1];
-    const myS1s = valid.map(l => l.duration_sector_1).filter((v): v is number => v != null);
-    const myS2s = valid.map(l => l.duration_sector_2).filter((v): v is number => v != null);
-    const myS3s = valid.map(l => l.duration_sector_3).filter((v): v is number => v != null);
-    const pbS1 = myS1s.length ? Math.min(...myS1s) : null;
-    const pbS2 = myS2s.length ? Math.min(...myS2s) : null;
-    const pbS3 = myS3s.length ? Math.min(...myS3s) : null;
-    const s1 = last?.duration_sector_1 ?? null;
-    const s2 = last?.duration_sector_2 ?? null;
-    const s3 = last?.duration_sector_3 ?? null;
-    const ds = stints.filter(s => s.driver_number === d.driver_number).sort((a, b) => b.stint_number - a.stint_number);
-    const cur = ds[0];
+    const st = driverLapStats(d.driver_number, laps);
+    const cur = currentStint(d.driver_number, stints);
+    const sc = sectorClasses(st, ob);
     return {
-      pos: 0, driver: d, bestLap: best, lastLap: last?.lap_duration ?? null, gap: null,
-      s1, s2, s3,
-      s1c: sectorClass(s1, pbS1, isFinite(obS1) ? obS1 : null),
-      s2c: sectorClass(s2, pbS2, isFinite(obS2) ? obS2 : null),
-      s3c: sectorClass(s3, pbS3, isFinite(obS3) ? obS3 : null),
-      pbS1, pbS2, pbS3,
+      pos: 0, driver: d, bestLap: st.bestLap, lastLap: st.lastLap, gap: null,
+      s1: st.s1, s2: st.s2, s3: st.s3,
+      s1c: sc.s1c, s2c: sc.s2c, s3c: sc.s3c,
+      pbS1: st.pbS1, pbS2: st.pbS2, pbS3: st.pbS3,
       compound: cur?.compound ?? 'UNKNOWN',
-      tyreAge: cur ? cur.tyre_age_at_start + (dl.length - (cur.lap_start - 1)) : 0,
-      laps: dl.length,
-      inPit: last?.is_pit_out_lap ?? false,
+      tyreAge: tyreAge(cur, st.lapsCount),
+      laps: st.lapsCount,
+      inPit: st.inPit,
     };
   });
-
-  rows.sort((a, b) => { if (a.bestLap == null) return 1; if (b.bestLap == null) return -1; return a.bestLap - b.bestLap; });
-  const leader = rows[0]?.bestLap ?? null;
-  rows.forEach((r, i) => { r.pos = i + 1; r.gap = i > 0 && r.bestLap != null && leader != null ? r.bestLap - leader : null; });
-  return rows;
+  return rankByBestLap(rows);
 }
+
+// Empty rows so the table layout is visible outside of a live session.
+const PREVIEW_ROWS: Row[] = Array.from({ length: 10 }, (_, i) => ({
+  pos: i + 1, driver: placeholderDriver(i + 1), bestLap: null, lastLap: null, gap: null,
+  s1: null, s2: null, s3: null, s1c: 'white', s2c: 'white', s3c: 'white',
+  pbS1: null, pbS2: null, pbS3: null, compound: 'UNKNOWN', tyreAge: 0, laps: 0, inPit: false,
+}));
 
 export default function PracticePage() {
   const [session, setSession] = useState<OpenF1Session | null>(null);
@@ -121,6 +87,9 @@ export default function PracticePage() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
+  const isPreview = !loading && !error && rows.length === 0;
+  const display = rows.length ? rows : PREVIEW_ROWS;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
@@ -136,12 +105,12 @@ export default function PracticePage() {
           {session && <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>{session.circuit_short_name} · {session.country_name}</div>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          {weather && (
+          {!error && (
             <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
-              <WeatherChip label="Air" value={`${weather.air_temperature.toFixed(1)}°C`} />
-              <WeatherChip label="Track" value={`${weather.track_temperature.toFixed(1)}°C`} />
-              <WeatherChip label="Humidity" value={`${weather.humidity.toFixed(0)}%`} />
-              {weather.rainfall > 0 && <WeatherChip label="Rain" value={`${weather.rainfall.toFixed(1)}mm`} accent />}
+              <WeatherChip label="Air" value={weather ? `${weather.air_temperature.toFixed(1)}°C` : '—'} />
+              <WeatherChip label="Track" value={weather ? `${weather.track_temperature.toFixed(1)}°C` : '—'} />
+              <WeatherChip label="Humidity" value={weather ? `${weather.humidity.toFixed(0)}%` : '—'} />
+              {weather && weather.rainfall > 0 && <WeatherChip label="Rain" value={`${weather.rainfall.toFixed(1)}mm`} accent />}
             </div>
           )}
           {updated && <span style={{ fontSize: 11, color: '#334155' }}>Updated {updated.toLocaleTimeString()}</span>}
@@ -149,19 +118,25 @@ export default function PracticePage() {
       </div>
 
       {/* fastest lap banner */}
-      {rows[0]?.bestLap && (
+      {!error && (
         <div style={{ background: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: 8, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: '#a855f7', letterSpacing: '0.1em' }}>FASTEST LAP</span>
-          <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 15, color: '#fff' }}>{fmtTime(rows[0].bestLap)}</span>
-          <span style={{ fontSize: 12, color: '#94a3b8' }}>{rows[0].driver.name_acronym} · {rows[0].driver.team_name}</span>
+          <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 15, color: '#fff' }}>{fmtTime(display[0]?.bestLap ?? null)}</span>
+          <span style={{ fontSize: 12, color: '#94a3b8' }}>{display[0]?.driver.name_acronym} · {display[0]?.driver.team_name}</span>
+        </div>
+      )}
+
+      {isPreview && (
+        <div style={{ background: 'rgba(148,163,184,0.08)', border: '1px solid rgba(148,163,184,0.18)', borderRadius: 8, padding: '8px 14px', color: '#94a3b8', fontSize: 12 }}>
+          Layout preview — no live session data right now. These boxes populate automatically during a session.
         </div>
       )}
 
       {loading && <div style={{ color: '#475569', padding: '60px 0', textAlign: 'center' }}>Connecting to OpenF1…</div>}
       {error && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: 12, color: '#f87171', fontSize: 13 }}>{error}</div>}
 
-      {!loading && !error && rows.length > 0 && (
-        <div className="glass" style={{ overflow: 'hidden' }}>
+      {!loading && !error && (
+        <div className="glass" style={{ overflow: 'hidden', opacity: isPreview ? 0.55 : 1 }}>
           {/* tab bar */}
           <div style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div className="tab-bar">
@@ -169,7 +144,7 @@ export default function PracticePage() {
                 <button key={t} className={`tab-btn${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>{t}</button>
               ))}
             </div>
-            <span style={{ fontSize: 11, color: '#334155' }}>{rows.length} drivers</span>
+            <span style={{ fontSize: 11, color: '#334155' }}>{isPreview ? 'Preview' : `${rows.length} drivers`}</span>
           </div>
 
           <div style={{ overflowX: 'auto' }}>
@@ -186,7 +161,7 @@ export default function PracticePage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, i) => (
+                {display.map((row, i) => (
                   <tr key={row.driver.driver_number} className={`timing-row${i === 0 ? ' p1' : ''}`}>
                     <td><span style={{ color: '#475569', fontFamily: 'monospace', fontSize: 12 }}>{row.pos}</span></td>
                     <td>
@@ -237,19 +212,6 @@ export default function PracticePage() {
           </div>
         </div>
       )}
-
-      {!loading && !error && rows.length === 0 && (
-        <div style={{ color: '#334155', padding: '60px 0', textAlign: 'center', fontSize: 13 }}>No timing data — session may not have started.</div>
-      )}
-    </div>
-  );
-}
-
-function WeatherChip({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div style={{ textAlign: 'center' }}>
-      <div style={{ fontSize: 10, color: '#475569' }}>{label}</div>
-      <div style={{ fontWeight: 600, color: accent ? '#60a5fa' : '#cbd5e1' }}>{value}</div>
     </div>
   );
 }
