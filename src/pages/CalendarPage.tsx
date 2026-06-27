@@ -8,7 +8,7 @@ interface Race {
   raceName: string;
   date: string;
   time?: string;
-  circuit: {
+  circuit?: {
     circuitName: string;
     location?: { country: string; locality: string; };
   };
@@ -80,7 +80,7 @@ export default function CalendarPage() {
         <div style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: 8, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: '#a855f7', letterSpacing: '0.1em' }}>NEXT RACE</span>
           <span style={{ fontWeight: 700, color: '#f1f5f9' }}>Round {nextRace.round} · {nextRace.raceName}</span>
-          <span style={{ fontSize: 12, color: '#94a3b8' }}>{nextRace.circuit.location?.locality ?? ''}{nextRace.circuit.location?.country ? `, ${nextRace.circuit.location.country}` : ''}</span>
+          <span style={{ fontSize: 12, color: '#94a3b8' }}>{nextRace.circuit?.location?.locality ?? ''}{nextRace.circuit?.location?.country ? `, ${nextRace.circuit.location.country}` : ''}</span>
           <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#c084fc', marginLeft: 'auto' }}>{formatRaceTime(nextRace)}</span>
         </div>
       )}
@@ -127,10 +127,10 @@ export default function CalendarPage() {
                         </span>
                       </td>
                       <td style={{ textAlign: 'left' }}>
-                        <span style={{ fontSize: 12, color: '#475569' }}>{race.circuit.circuitName}</span>
+                        <span style={{ fontSize: 12, color: '#475569' }}>{race.circuit?.circuitName ?? '—'}</span>
                       </td>
                       <td style={{ textAlign: 'left' }}>
-                        <span style={{ fontSize: 12, color: '#475569' }}>{race.circuit.location?.country ?? '—'}</span>
+                        <span style={{ fontSize: 12, color: '#475569' }}>{race.circuit?.location?.country ?? '—'}</span>
                       </td>
                       <td>
                         <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#64748b' }}>{race.date}</span>

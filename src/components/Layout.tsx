@@ -1,4 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
+import ErrorBoundary from './ErrorBoundary';
 
 const NAV = [
   { to: '/practice',   label: 'Practice',   icon: '⏱' },
@@ -107,7 +108,9 @@ export default function Layout() {
 
         {/* page content */}
         <main style={{ flex: 1, padding: 16, overflowY: 'auto' }}>
-          <Outlet />
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
     </div>
