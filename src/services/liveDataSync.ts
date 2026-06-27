@@ -10,7 +10,7 @@ interface LiveDataListener {
 
 class LiveDataSync {
   private sessionKey: number | null = null;
-  private pollingInterval: NodeJS.Timeout | null = null;
+  private pollingInterval: number | null = null;
   private listeners: Set<LiveDataListener> = new Set();
   private readonly POLL_INTERVAL_MS = 4000; // Poll every 4 seconds
 
