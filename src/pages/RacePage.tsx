@@ -1,11 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { openf1Api } from '../services/openf1Api';
 import type { OpenF1Session, OpenF1Driver, OpenF1Lap, OpenF1Stint, OpenF1Weather } from '../types/openf1';
+import { TYRE_COLOUR, TYRE_LABEL, fmtTime, overallSectorBests, driverLapStats, sectorClasses, currentStint, tyreAge } from '../utils/timing';
+import WeatherChip from '../components/WeatherChip';
 
 type Tab = 'LAP' | 'SECTOR' | 'TYRE' | 'PIT';
-
-const TYRE_COLOUR: Record<string, string> = { SOFT: '#f87171', MEDIUM: '#facc15', HARD: '#e2e8f0', INTERMEDIATE: '#4ade80', WET: '#60a5fa', UNKNOWN: '#64748b' };
-const TYRE_LABEL: Record<string, string> = { SOFT: 'S', MEDIUM: 'M', HARD: 'H', INTERMEDIATE: 'I', WET: 'W', UNKNOWN: '?' };
 
 // Scheduled race distance per circuit, keyed by OpenF1 circuit_short_name.
 // Used for "laps left" — observed lap data can't tell us the total, so circuits
@@ -17,9 +16,6 @@ const RACE_LAPS: Record<string, number> = {
   Monza: 53, Baku: 51, 'Marina Bay': 62, Singapore: 62, Austin: 56,
   'Mexico City': 71, Interlagos: 71, 'Las Vegas': 50, Lusail: 57, 'Yas Marina': 58,
 };
-
-function fmtTime(s: number | null) { if (s == null) return '—'; const m = Math.floor(s / 60); return m > 0 ? `${m}:${(s % 60).toFixed(3).padStart(6, '0')}` : (s % 60).toFixed(3); }
-function sectorClass(v: number | null, pb: number | null, ob: number | null) { if (v == null) return 'white'; if (ob != null && v <= ob) return 'purple'; if (pb != null && v <= pb) return 'green'; return 'yellow'; }
 
 interface PitStop { driver_number: number; lap_number: number; pit_duration: number | null; }
 interface RaceControlMsg { date: string; message: string; flag?: string; category?: string; }
@@ -37,37 +33,25 @@ interface Row {
 }
 
 function buildRows(drivers: OpenF1Driver[], laps: OpenF1Lap[], stints: OpenF1Stint[], pits: PitStop[], intervals: Interval[]): Row[] {
-  const obS1 = Math.min(...laps.map(l => l.duration_sector_1).filter((v): v is number => v != null));
-  const obS2 = Math.min(...laps.map(l => l.duration_sector_2).filter((v): v is number => v != null));
-  const obS3 = Math.min(...laps.map(l => l.duration_sector_3).filter((v): v is number => v != null));
+  const ob = overallSectorBests(laps);
   const latestIv = new Map(intervals.map(iv => [iv.driver_number, iv]));
+  const fmt = (v: number | string | null) => v == null ? '—' : typeof v === 'number' ? `+${v.toFixed(3)}` : String(v);
 
   return drivers.map(d => {
-    const dl = laps.filter(l => l.driver_number === d.driver_number);
-    const valid = dl.filter(l => l.lap_duration != null && !l.is_pit_out_lap);
-    const best = valid.length ? Math.min(...valid.map(l => l.lap_duration!)) : null;
-    const last = dl[dl.length - 1];
-    const myS1s = valid.map(l => l.duration_sector_1).filter((v): v is number => v != null);
-    const myS2s = valid.map(l => l.duration_sector_2).filter((v): v is number => v != null);
-    const myS3s = valid.map(l => l.duration_sector_3).filter((v): v is number => v != null);
-    const s1 = last?.duration_sector_1 ?? null; const s2 = last?.duration_sector_2 ?? null; const s3 = last?.duration_sector_3 ?? null;
-    const ds = stints.filter(s => s.driver_number === d.driver_number).sort((a, b) => b.stint_number - a.stint_number);
-    const cur = ds[0];
+    const st = driverLapStats(d.driver_number, laps);
+    const cur = currentStint(d.driver_number, stints);
+    const sc = sectorClasses(st, ob);
     const dp = pits.filter(p => p.driver_number === d.driver_number).sort((a, b) => b.lap_number - a.lap_number);
     const iv = latestIv.get(d.driver_number);
-    const fmt = (v: number | string | null) => v == null ? '—' : typeof v === 'number' ? `+${v.toFixed(3)}` : String(v);
     return {
       pos: 0, driver: d,
       gapToLeader: fmt(iv?.gap_to_leader ?? null), gapAhead: fmt(iv?.interval ?? null),
-      currentLap: dl.length, lastLap: last?.lap_duration ?? null, bestLap: best,
-      s1, s2, s3,
-      s1c: sectorClass(s1, myS1s.length ? Math.min(...myS1s) : null, isFinite(obS1) ? obS1 : null),
-      s2c: sectorClass(s2, myS2s.length ? Math.min(...myS2s) : null, isFinite(obS2) ? obS2 : null),
-      s3c: sectorClass(s3, myS3s.length ? Math.min(...myS3s) : null, isFinite(obS3) ? obS3 : null),
+      currentLap: st.lapsCount, lastLap: st.lastLap, bestLap: st.bestLap,
+      s1: st.s1, s2: st.s2, s3: st.s3, s1c: sc.s1c, s2c: sc.s2c, s3c: sc.s3c,
       compound: cur?.compound ?? 'UNKNOWN',
-      tyreAge: cur ? cur.tyre_age_at_start + (dl.length - (cur.lap_start - 1)) : 0,
+      tyreAge: tyreAge(cur, st.lapsCount),
       pitCount: dp.length, lastPitLap: dp[0]?.lap_number ?? null, lastPitDuration: dp[0]?.pit_duration ?? null,
-      inPit: last?.is_pit_out_lap ?? false,
+      inPit: st.inPit,
     };
   }).sort((a, b) => b.currentLap - a.currentLap).map((r, i) => ({ ...r, pos: i + 1 }));
 }
@@ -382,15 +366,6 @@ export default function RacePage() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function WeatherChip({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div style={{ textAlign: 'center' }}>
-      <div style={{ fontSize: 10, color: '#475569' }}>{label}</div>
-      <div style={{ fontWeight: 600, color: accent ? '#60a5fa' : '#cbd5e1' }}>{value}</div>
     </div>
   );
 }
