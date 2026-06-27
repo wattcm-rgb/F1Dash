@@ -60,7 +60,7 @@ export default function CalendarPage() {
       {/* header */}
       <div className="glass" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9' }}>F1 Calendar {currentYear}</div>
+          <div className="f1-heading" style={{ fontSize: 17, color: '#f1f5f9' }}>F1 Calendar {currentYear}</div>
           <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>{races.length} races scheduled</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

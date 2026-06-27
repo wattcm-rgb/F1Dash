@@ -128,7 +128,7 @@ export default function PracticePage() {
       <div className="glass" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9' }}>
+            <span className="f1-heading" style={{ fontSize: 17, color: '#f1f5f9' }}>
               {session ? `${session.meeting_name} · ${session.session_name}` : 'Practice Session'}
             </span>
             {isLive && <span style={{ fontSize: 10, background: 'rgba(239,68,68,0.2)', color: '#f87171', border: '1px solid rgba(239,68,68,0.4)', padding: '2px 7px', borderRadius: 4, fontWeight: 700, letterSpacing: '0.08em' }}>LIVE</span>}
