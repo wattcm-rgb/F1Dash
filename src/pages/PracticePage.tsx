@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { openf1Api } from '../services/openf1Api';
 import type { OpenF1Session, OpenF1Driver, OpenF1Lap, OpenF1Stint, OpenF1Weather } from '../types/openf1';
-import { TYRE_COLOUR, TYRE_LABEL, fmtTime, overallSectorBests, driverLapStats, sectorClasses, currentStint, tyreAge, rankByBestLap } from '../utils/timing';
+import { TYRE_COLOUR, TYRE_LABEL, fmtTime, overallSectorBests, driverLapStats, sectorClasses, currentStint, tyreAge, rankByBestLap, placeholderDriver } from '../utils/timing';
 import WeatherChip from '../components/WeatherChip';
 
 type Tab = 'LAP' | 'SECTOR' | 'TYRE';
@@ -40,6 +40,13 @@ function buildRows(drivers: OpenF1Driver[], laps: OpenF1Lap[], stints: OpenF1Sti
   });
   return rankByBestLap(rows);
 }
+
+// Empty rows so the table layout is visible outside of a live session.
+const PREVIEW_ROWS: Row[] = Array.from({ length: 10 }, (_, i) => ({
+  pos: i + 1, driver: placeholderDriver(i + 1), bestLap: null, lastLap: null, gap: null,
+  s1: null, s2: null, s3: null, s1c: 'white', s2c: 'white', s3c: 'white',
+  pbS1: null, pbS2: null, pbS3: null, compound: 'UNKNOWN', tyreAge: 0, laps: 0, inPit: false,
+}));
 
 export default function PracticePage() {
   const [session, setSession] = useState<OpenF1Session | null>(null);
@@ -80,6 +87,9 @@ export default function PracticePage() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
+  const isPreview = !loading && !error && rows.length === 0;
+  const display = rows.length ? rows : PREVIEW_ROWS;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
@@ -95,12 +105,12 @@ export default function PracticePage() {
           {session && <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>{session.circuit_short_name} · {session.country_name}</div>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          {weather && (
+          {!error && (
             <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
-              <WeatherChip label="Air" value={`${weather.air_temperature.toFixed(1)}°C`} />
-              <WeatherChip label="Track" value={`${weather.track_temperature.toFixed(1)}°C`} />
-              <WeatherChip label="Humidity" value={`${weather.humidity.toFixed(0)}%`} />
-              {weather.rainfall > 0 && <WeatherChip label="Rain" value={`${weather.rainfall.toFixed(1)}mm`} accent />}
+              <WeatherChip label="Air" value={weather ? `${weather.air_temperature.toFixed(1)}°C` : '—'} />
+              <WeatherChip label="Track" value={weather ? `${weather.track_temperature.toFixed(1)}°C` : '—'} />
+              <WeatherChip label="Humidity" value={weather ? `${weather.humidity.toFixed(0)}%` : '—'} />
+              {weather && weather.rainfall > 0 && <WeatherChip label="Rain" value={`${weather.rainfall.toFixed(1)}mm`} accent />}
             </div>
           )}
           {updated && <span style={{ fontSize: 11, color: '#334155' }}>Updated {updated.toLocaleTimeString()}</span>}
@@ -108,19 +118,25 @@ export default function PracticePage() {
       </div>
 
       {/* fastest lap banner */}
-      {rows[0]?.bestLap && (
+      {!error && (
         <div style={{ background: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: 8, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: '#a855f7', letterSpacing: '0.1em' }}>FASTEST LAP</span>
-          <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 15, color: '#fff' }}>{fmtTime(rows[0].bestLap)}</span>
-          <span style={{ fontSize: 12, color: '#94a3b8' }}>{rows[0].driver.name_acronym} · {rows[0].driver.team_name}</span>
+          <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 15, color: '#fff' }}>{fmtTime(display[0]?.bestLap ?? null)}</span>
+          <span style={{ fontSize: 12, color: '#94a3b8' }}>{display[0]?.driver.name_acronym} · {display[0]?.driver.team_name}</span>
+        </div>
+      )}
+
+      {isPreview && (
+        <div style={{ background: 'rgba(148,163,184,0.08)', border: '1px solid rgba(148,163,184,0.18)', borderRadius: 8, padding: '8px 14px', color: '#94a3b8', fontSize: 12 }}>
+          Layout preview — no live session data right now. These boxes populate automatically during a session.
         </div>
       )}
 
       {loading && <div style={{ color: '#475569', padding: '60px 0', textAlign: 'center' }}>Connecting to OpenF1…</div>}
       {error && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: 12, color: '#f87171', fontSize: 13 }}>{error}</div>}
 
-      {!loading && !error && rows.length > 0 && (
-        <div className="glass" style={{ overflow: 'hidden' }}>
+      {!loading && !error && (
+        <div className="glass" style={{ overflow: 'hidden', opacity: isPreview ? 0.55 : 1 }}>
           {/* tab bar */}
           <div style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div className="tab-bar">
@@ -128,7 +144,7 @@ export default function PracticePage() {
                 <button key={t} className={`tab-btn${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>{t}</button>
               ))}
             </div>
-            <span style={{ fontSize: 11, color: '#334155' }}>{rows.length} drivers</span>
+            <span style={{ fontSize: 11, color: '#334155' }}>{isPreview ? 'Preview' : `${rows.length} drivers`}</span>
           </div>
 
           <div style={{ overflowX: 'auto' }}>
@@ -145,7 +161,7 @@ export default function PracticePage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, i) => (
+                {display.map((row, i) => (
                   <tr key={row.driver.driver_number} className={`timing-row${i === 0 ? ' p1' : ''}`}>
                     <td><span style={{ color: '#475569', fontFamily: 'monospace', fontSize: 12 }}>{row.pos}</span></td>
                     <td>
@@ -195,10 +211,6 @@ export default function PracticePage() {
             </table>
           </div>
         </div>
-      )}
-
-      {!loading && !error && rows.length === 0 && (
-        <div style={{ color: '#334155', padding: '60px 0', textAlign: 'center', fontSize: 13 }}>No timing data — session may not have started.</div>
       )}
     </div>
   );

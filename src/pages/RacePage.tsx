@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { openf1Api } from '../services/openf1Api';
 import type { OpenF1Session, OpenF1Driver, OpenF1Lap, OpenF1Stint, OpenF1Weather } from '../types/openf1';
-import { TYRE_COLOUR, TYRE_LABEL, fmtTime, overallSectorBests, driverLapStats, sectorClasses, currentStint, tyreAge } from '../utils/timing';
+import { TYRE_COLOUR, TYRE_LABEL, fmtTime, overallSectorBests, driverLapStats, sectorClasses, currentStint, tyreAge, placeholderDriver } from '../utils/timing';
 import WeatherChip from '../components/WeatherChip';
 
 type Tab = 'LAP' | 'SECTOR' | 'TYRE' | 'PIT';
@@ -55,6 +55,14 @@ function buildRows(drivers: OpenF1Driver[], laps: OpenF1Lap[], stints: OpenF1Sti
     };
   }).sort((a, b) => b.currentLap - a.currentLap).map((r, i) => ({ ...r, pos: i + 1 }));
 }
+
+// Empty rows so the layout is visible outside of a live race.
+const PREVIEW_ROWS: Row[] = Array.from({ length: 10 }, (_, i) => ({
+  pos: i + 1, driver: placeholderDriver(i + 1), gapToLeader: '—', gapAhead: '—',
+  currentLap: 0, lastLap: null, bestLap: null,
+  s1: null, s2: null, s3: null, s1c: 'white', s2c: 'white', s3c: 'white',
+  compound: 'UNKNOWN', tyreAge: 0, pitCount: 0, lastPitLap: null, lastPitDuration: null, inPit: false,
+}));
 
 interface Meeting { label: string; sessionKey: number; }
 
@@ -126,10 +134,12 @@ export default function RacePage() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [selectedKey, fetchData]);
 
-  const dA = rows.find(r => r.driver.driver_number === battleA);
-  const dB = rows.find(r => r.driver.driver_number === battleB);
+  const isPreview = !loading && !error && rows.length === 0;
+  const display = rows.length ? rows : PREVIEW_ROWS;
+  const dA = display.find(r => r.driver.driver_number === battleA);
+  const dB = display.find(r => r.driver.driver_number === battleB);
   const delta = dA?.bestLap != null && dB?.bestLap != null ? dA.bestLap - dB.bestLap : null;
-  const lapsLeft = totalLaps != null ? Math.max(0, totalLaps - (rows[0]?.currentLap ?? 0)) : null;
+  const lapsLeft = totalLaps != null ? Math.max(0, totalLaps - (display[0]?.currentLap ?? 0)) : null;
   const latestFlag = rcMsgs.find(m => m.flag || m.category === 'Flag');
 
   return (
@@ -156,11 +166,11 @@ export default function RacePage() {
               {meetings.map(m => <option key={m.sessionKey} value={m.sessionKey}>{m.label}</option>)}
             </select>
           )}
-          {weather && (
+          {!error && (
             <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
-              <WeatherChip label="Air" value={`${weather.air_temperature.toFixed(1)}°C`} />
-              <WeatherChip label="Track" value={`${weather.track_temperature.toFixed(1)}°C`} />
-              {weather.rainfall > 0 && <WeatherChip label="Rain" value={`${weather.rainfall.toFixed(1)}mm`} accent />}
+              <WeatherChip label="Air" value={weather ? `${weather.air_temperature.toFixed(1)}°C` : '—'} />
+              <WeatherChip label="Track" value={weather ? `${weather.track_temperature.toFixed(1)}°C` : '—'} />
+              {weather && weather.rainfall > 0 && <WeatherChip label="Rain" value={`${weather.rainfall.toFixed(1)}mm`} accent />}
             </div>
           )}
           {updated && <span style={{ fontSize: 11, color: '#334155' }}>{isLive ? 'Live · ' : ''}Updated {updated.toLocaleTimeString()}</span>}
@@ -169,10 +179,10 @@ export default function RacePage() {
 
       {/* status strip */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {lapsLeft != null && (
+        {(lapsLeft != null || isPreview) && (
           <div className="glass" style={{ padding: '8px 16px', textAlign: 'center' }}>
             <div style={{ fontSize: 10, color: '#475569', letterSpacing: '0.08em' }}>LAPS LEFT</div>
-            <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'monospace', color: '#f1f5f9', lineHeight: 1.2 }}>{lapsLeft}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'monospace', color: '#f1f5f9', lineHeight: 1.2 }}>{lapsLeft ?? '—'}</div>
             {totalLaps && <div style={{ fontSize: 10, color: '#334155' }}>of {totalLaps}</div>}
           </div>
         )}
@@ -183,11 +193,11 @@ export default function RacePage() {
             </span>
           </div>
         )}
-        {rows[0] && (
+        {(rows[0] || isPreview) && (
           <div className="glass" style={{ padding: '8px 16px' }}>
             <div style={{ fontSize: 10, color: '#475569' }}>LEADER</div>
-            <div style={{ fontWeight: 700, color: '#facc15' }}>{rows[0].driver.name_acronym}</div>
-            <div style={{ fontSize: 10, color: '#475569' }}>{rows[0].driver.team_name}</div>
+            <div style={{ fontWeight: 700, color: '#facc15' }}>{display[0]?.driver.name_acronym}</div>
+            <div style={{ fontSize: 10, color: '#475569' }}>{display[0]?.driver.team_name}</div>
           </div>
         )}
       </div>
@@ -195,8 +205,14 @@ export default function RacePage() {
       {loading && <div style={{ color: '#475569', padding: '60px 0', textAlign: 'center' }}>Loading race data…</div>}
       {error && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: 12, color: '#f87171', fontSize: 13 }}>{error}</div>}
 
-      {!loading && !error && rows.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 12, alignItems: 'start' }}>
+      {isPreview && (
+        <div style={{ background: 'rgba(148,163,184,0.08)', border: '1px solid rgba(148,163,184,0.18)', borderRadius: 8, padding: '8px 14px', color: '#94a3b8', fontSize: 12 }}>
+          Layout preview — no race data right now. These boxes populate during a race.
+        </div>
+      )}
+
+      {!loading && !error && (
+        <div className="race-layout" style={{ opacity: isPreview ? 0.55 : 1 }}>
 
           {/* timing table */}
           <div className="glass" style={{ overflow: 'hidden' }}>
@@ -206,7 +222,7 @@ export default function RacePage() {
                   <button key={t} className={`tab-btn${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>{t}</button>
                 ))}
               </div>
-              <span style={{ fontSize: 11, color: '#334155' }}>{rows.length} drivers</span>
+              <span style={{ fontSize: 11, color: '#334155' }}>{isPreview ? 'Preview' : `${rows.length} drivers`}</span>
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table className="timing-table">
@@ -223,7 +239,7 @@ export default function RacePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row, i) => (
+                  {display.map((row, i) => (
                     <tr key={row.driver.driver_number} className={`timing-row${i === 0 ? ' p1' : ''}`} style={{ opacity: row.inPit ? 0.6 : 1 }}>
                       <td><span style={{ color: '#475569', fontFamily: 'monospace', fontSize: 12 }}>{row.pos}</span></td>
                       <td>
@@ -292,7 +308,7 @@ export default function RacePage() {
                       onChange={e => idx === 0 ? setBattleA(e.target.value ? Number(e.target.value) : null) : setBattleB(e.target.value ? Number(e.target.value) : null)}
                     >
                       <option value="">Select</option>
-                      {rows.map(r => <option key={r.driver.driver_number} value={r.driver.driver_number}>P{r.pos} {r.driver.name_acronym}</option>)}
+                      {display.map(r => <option key={r.driver.driver_number} value={r.driver.driver_number}>P{r.pos} {r.driver.name_acronym}</option>)}
                     </select>
                   </div>
                 ))}
@@ -331,10 +347,11 @@ export default function RacePage() {
             </div>
 
             {/* race control */}
-            {rcMsgs.length > 0 && (
+            {(rcMsgs.length > 0 || isPreview) && (
               <div className="glass" style={{ padding: 14 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#475569', letterSpacing: '0.1em', marginBottom: 10 }}>RACE CONTROL</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 280, overflowY: 'auto' }}>
+                  {rcMsgs.length === 0 && <div style={{ fontSize: 12, color: '#334155' }}>No messages yet.</div>}
                   {rcMsgs.map((msg, i) => (
                     <div key={i} style={{
                       background: msg.flag === 'RED' ? 'rgba(239,68,68,0.1)' : msg.flag === 'YELLOW' || msg.message?.includes('SAFETY CAR') ? 'rgba(234,179,8,0.1)' : 'rgba(255,255,255,0.03)',
@@ -350,11 +367,11 @@ export default function RacePage() {
             )}
 
             {/* weather */}
-            {weather && (
+            {(weather || isPreview) && (
               <div className="glass" style={{ padding: 14 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#475569', letterSpacing: '0.1em', marginBottom: 10 }}>WEATHER</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                  {[['Air Temp', `${weather.air_temperature.toFixed(1)}°C`], ['Track Temp', `${weather.track_temperature.toFixed(1)}°C`], ['Humidity', `${weather.humidity.toFixed(0)}%`], ['Wind', `${weather.wind_speed.toFixed(1)} m/s`], ['Rainfall', weather.rainfall > 0 ? `${weather.rainfall.toFixed(1)}mm` : 'None'], ['Pressure', `${weather.pressure.toFixed(0)} hPa`]].map(([l, v]) => (
+                  {[['Air Temp', weather ? `${weather.air_temperature.toFixed(1)}°C` : '—'], ['Track Temp', weather ? `${weather.track_temperature.toFixed(1)}°C` : '—'], ['Humidity', weather ? `${weather.humidity.toFixed(0)}%` : '—'], ['Wind', weather ? `${weather.wind_speed.toFixed(1)} m/s` : '—'], ['Rainfall', weather ? (weather.rainfall > 0 ? `${weather.rainfall.toFixed(1)}mm` : 'None') : '—'], ['Pressure', weather ? `${weather.pressure.toFixed(0)} hPa` : '—']].map(([l, v]) => (
                     <div key={l} style={{ background: 'rgba(0,0,0,0.3)', borderRadius: 6, padding: '6px 8px' }}>
                       <div style={{ fontSize: 10, color: '#334155' }}>{l}</div>
                       <div style={{ fontSize: 13, fontWeight: 600, color: '#cbd5e1' }}>{v}</div>

@@ -10,13 +10,6 @@ export default class ErrorBoundary extends Component<Props, State> {
     return { error };
   }
 
-  componentDidUpdate(prevProps: Props) {
-    // reset the error when the route's children change
-    if (prevProps.children !== this.props.children && this.state.error) {
-      this.setState({ error: null });
-    }
-  }
-
   render() {
     if (this.state.error) {
       return (

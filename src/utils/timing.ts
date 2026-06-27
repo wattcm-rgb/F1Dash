@@ -1,4 +1,14 @@
-import type { OpenF1Lap, OpenF1Stint } from '../types/openf1';
+import type { OpenF1Lap, OpenF1Stint, OpenF1Driver } from '../types/openf1';
+
+// A blank driver used to render the page layout ("the boxes") when there is no
+// live session data yet, so the structure is visible outside of sessions.
+export function placeholderDriver(n: number): OpenF1Driver {
+  return {
+    driver_number: -n,
+    broadcast_name: '—', full_name: '—', name_acronym: '—',
+    team_name: '—', team_colour: '1e293b',
+  };
+}
 
 export const TYRE_COLOUR: Record<string, string> = {
   SOFT: '#f87171', MEDIUM: '#facc15', HARD: '#e2e8f0',
