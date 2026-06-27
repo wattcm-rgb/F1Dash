@@ -89,4 +89,39 @@ export const openf1Api = {
       return [];
     }
   },
+
+  async getStints(sessionKey: number) {
+    try {
+      const res = await fetch(`${OPENF1_BASE_URL}/stints?session_key=${sessionKey}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    } catch (error) {
+      console.error('Failed to fetch stints:', error);
+      return [];
+    }
+  },
+
+  async getDriversBySession(sessionKey: number) {
+    try {
+      const res = await fetch(`${OPENF1_BASE_URL}/drivers?session_key=${sessionKey}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    } catch (error) {
+      console.error('Failed to fetch drivers for session:', error);
+      return [];
+    }
+  },
+
+  async getLatestSession(type: 'Practice' | 'Qualifying' | 'Race') {
+    try {
+      const res = await fetch(`${OPENF1_BASE_URL}/sessions?session_type=${type}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const sessions = await res.json();
+      if (!sessions.length) return null;
+      return sessions[sessions.length - 1];
+    } catch (error) {
+      console.error('Failed to fetch latest session:', error);
+      return null;
+    }
+  },
 };
