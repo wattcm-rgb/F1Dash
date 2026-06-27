@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { SessionData } from '../types/f1';
+import type { SessionData } from '../types/f1';
 
 interface SessionStore {
   sessionData: SessionData | null;

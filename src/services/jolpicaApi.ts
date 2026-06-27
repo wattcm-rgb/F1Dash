@@ -1,5 +1,3 @@
-import { Race, Driver } from '../types/f1';
-
 const BASE_URL = 'https://api.jolpi.ca/ergast/f1';
 
 export const jolpicaApi = {

@@ -3,11 +3,12 @@
 @tailwind utilities;
 
 * {
-  @apply box-border;
+  box-sizing: border-box;
 }
 
 html, body {
-  @apply bg-slate-950 text-white;
+  background-color: #0f172a;
+  color: white;
   margin: 0;
   padding: 0;
 }
@@ -17,5 +18,7 @@ body {
 }
 
 #root {
-  @apply min-h-screen flex flex-col;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
