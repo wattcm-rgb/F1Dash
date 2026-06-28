@@ -18,6 +18,11 @@
 
 * { box-sizing: border-box; }
 
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
 /* all headers use the F1 typeface */
 h1, h2, h3, h4, .f1-heading {
   font-family: 'Formula1', system-ui, sans-serif;

@@ -4,6 +4,7 @@ import type { OpenF1Session, OpenF1Driver, OpenF1Lap, OpenF1Stint, OpenF1Weather
 import { isLiveSession, isPastSession, sessionLabel } from '../types/openf1';
 import { TYRE_COLOUR, TYRE_LABEL, fmtTime, driverLapStats, currentStint, tyreAge } from '../utils/timing';
 import WeatherChip from '../components/WeatherChip';
+import StatusBanner from '../components/StatusBanner';
 
 type Tab = 'LEADERBOARD' | 'PIT STOPS' | 'BATTLE' | 'TRACK MAP';
 
@@ -401,40 +402,6 @@ export default function LivePage() {
 
   // ── render ────────────────────────────────────────────────────────────────
 
-  if (detecting) {
-    return <div style={{ color: '#475569', padding: '80px 0', textAlign: 'center' }}>Checking for live session…</div>;
-  }
-
-  if (!isLive) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center', padding: '60px 0' }}>
-        <svg
-          width={132} height={70} viewBox="0 0 64 34" fill="none"
-          stroke="#f87171" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
-          style={{ filter: 'drop-shadow(0 0 12px rgba(239,68,68,0.5))' }}
-        >
-          <circle cx="16" cy="24" r="6" />
-          <circle cx="47" cy="24" r="6" />
-          <path d="M3 12 L11 12" />
-          <path d="M6 12 L6 19" />
-          <path d="M6 19 C9 19 9 13 16 12 L20 12 C23 12 24 16 30 16 L38 16 C46 16 50 19 61 19 L61 22 L55 22" />
-          <path d="M21 12.5 C22 9 28 9 29 13.5" />
-          <path d="M62 18 L62 23" />
-          <path d="M22 27 L41 27" />
-        </svg>
-        <div style={{ fontSize: 18, fontWeight: 700, color: '#f1f5f9' }}>No live race right now</div>
-        {session && (
-          <div style={{ fontSize: 13, color: '#64748b' }}>
-            Last race: {sessionLabel(session)} — {new Date(session.date_start).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
-          </div>
-        )}
-        <div style={{ fontSize: 12, color: '#334155', maxWidth: 320, textAlign: 'center', lineHeight: 1.6 }}>
-          This page connects automatically when a race is in progress. Check back on race day.
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
@@ -445,7 +412,9 @@ export default function LivePage() {
             <span className="f1-heading" style={{ fontSize: 17, color: '#f1f5f9' }}>
               {session ? `${sessionLabel(session)} · Race` : 'Live Race'}
             </span>
-            <span style={{ fontSize: 10, background: 'rgba(239,68,68,0.2)', color: '#f87171', border: '1px solid rgba(239,68,68,0.4)', padding: '2px 7px', borderRadius: 4, fontWeight: 700, letterSpacing: '0.08em' }}>LIVE</span>
+            {isLive
+              ? <span style={{ fontSize: 10, background: 'rgba(239,68,68,0.2)', color: '#f87171', border: '1px solid rgba(239,68,68,0.4)', padding: '2px 7px', borderRadius: 4, fontWeight: 700, letterSpacing: '0.08em' }}>LIVE</span>
+              : <span style={{ fontSize: 10, background: 'rgba(100,116,139,0.15)', color: '#64748b', border: '1px solid rgba(100,116,139,0.3)', padding: '2px 7px', borderRadius: 4, fontWeight: 700, letterSpacing: '0.08em' }}>OFFLINE</span>}
             {curFlag && (
               <span style={{ fontSize: 11, fontWeight: 700, color: flagColor(curFlag.flag), background: 'rgba(0,0,0,0.3)', padding: '2px 8px', borderRadius: 4, border: `1px solid ${flagColor(curFlag.flag)}44` }}>
                 {curFlag.flag === 'SC' ? '🚗 SC' : curFlag.flag === 'VSC' ? '🚗 VSC' : `${curFlag.flag} FLAG`}
@@ -468,9 +437,19 @@ export default function LivePage() {
         </div>
       </div>
 
-      {loading && <div style={{ color: '#475569', padding: '40px 0', textAlign: 'center' }}>Connecting to OpenF1…</div>}
+      {/* live-status banner */}
+      {detecting ? (
+        <StatusBanner tone="grey">Checking for a live session…</StatusBanner>
+      ) : !isLive ? (
+        <StatusBanner tone="amber">
+          No live race right now — the leaderboard, pit stops, battle, and track map will populate automatically when a race goes live.
+          {session && ` Last race: ${sessionLabel(session)}.`}
+        </StatusBanner>
+      ) : null}
 
-      {!loading && (
+      {loading && isLive && <div style={{ color: '#475569', padding: '40px 0', textAlign: 'center' }}>Connecting to OpenF1…</div>}
+
+      {(!loading || !isLive) && (
         <>
           {/* ── tab bar ── */}
           <div className="glass" style={{ padding: '8px 12px' }}>
@@ -499,6 +478,9 @@ export default function LivePage() {
                     </tr>
                   </thead>
                   <tbody>
+                    {sortedBoard.length === 0 && (
+                      <tr><td colSpan={8} style={{ textAlign: 'center', padding: '48px 0', color: '#334155', fontSize: 13 }}>Waiting for live timing data…</td></tr>
+                    )}
                     {sortedBoard.map((row, i) => (
                       <tr key={row.driver.driver_number} className={`timing-row${i === 0 ? ' p1' : ''}`}>
                         <td><span style={{ color: '#475569', fontFamily: 'monospace', fontSize: 12 }}>{row.pos}</span></td>
@@ -571,6 +553,9 @@ export default function LivePage() {
                     </tr>
                   </thead>
                   <tbody>
+                    {pitRows.length === 0 && (
+                      <tr><td colSpan={5} style={{ textAlign: 'center', padding: '48px 0', color: '#334155', fontSize: 13 }}>Waiting for live pit-stop data…</td></tr>
+                    )}
                     {pitRows.map(row => (
                       <tr key={row.driver.driver_number} className="timing-row">
                         <td>
@@ -769,7 +754,7 @@ export default function LivePage() {
               <div className="glass" style={{ padding: 12 }}>
                 {!hasOutline && allPts.length === 0 ? (
                   <div style={{ color: '#475569', textAlign: 'center', padding: '60px 0', fontSize: 13 }}>
-                    Loading track map…
+                    {isLive ? 'Loading track map…' : 'The track map appears here during a live race.'}
                   </div>
                 ) : (
                   <svg
@@ -849,7 +834,9 @@ export default function LivePage() {
               <div style={{ fontSize: 11, color: '#334155', textAlign: 'center' }}>
                 {hasOutline
                   ? 'Track outline loaded from this weekend’s earlier sessions. Dots show live car positions; sectors tint on yellow/red flags.'
-                  : 'Loading track outline from earlier sessions… live car positions shown as they arrive.'}
+                  : isLive
+                    ? 'Loading track outline from earlier sessions… live car positions shown as they arrive.'
+                    : 'Live car positions and sector flags appear here during a race.'}
               </div>
             </div>
           )}
