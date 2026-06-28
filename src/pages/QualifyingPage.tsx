@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef, Fragment } from 'react';
 import { openf1Api } from '../services/openf1Api';
 import type { OpenF1Session, OpenF1Driver, OpenF1Lap, OpenF1Stint, OpenF1Weather } from '../types/openf1';
+import { sessionLabel, isLiveSession, isPastSession } from '../types/openf1';
 import { TYRE_COLOUR, TYRE_LABEL, fmtTime, overallSectorBests, driverLapStats, sectorClasses, currentStint, rankByBestLap, placeholderDriver } from '../utils/timing';
 import WeatherChip from '../components/WeatherChip';
 
@@ -37,7 +38,7 @@ const PREVIEW_ROWS: Row[] = Array.from({ length: 10 }, (_, i) => ({
   compound: 'UNKNOWN', laps: 0, eliminated: false, inPit: false,
 }));
 
-interface Meeting { label: string; sessionKeys: { name: string; key: number }[]; }
+interface Meeting { meetingKey: number; label: string; sessionKeys: { name: string; key: number }[]; }
 
 export default function QualifyingPage() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -57,15 +58,21 @@ export default function QualifyingPage() {
       try {
         const year = new Date().getFullYear();
         const sessions: OpenF1Session[] = await openf1Api.getSessionsByYear(year);
-        const qual = sessions.filter(s => s.session_type === 'Qualifying' || s.session_name?.toLowerCase().includes('qualifying'));
-        const map = new Map<string, Meeting>();
+        const qual = sessions.filter(s =>
+          (s.session_type === 'Qualifying' || s.session_name?.toLowerCase().includes('qualifying')) &&
+          isPastSession(s)
+        );
+        const map = new Map<number, Meeting>();
         for (const s of qual) {
-          if (!map.has(s.meeting_name)) map.set(s.meeting_name, { label: s.meeting_name, sessionKeys: [] });
-          map.get(s.meeting_name)!.sessionKeys.push({ name: s.session_name, key: s.session_key });
+          const key = s.meeting_key;
+          const label = sessionLabel(s);
+          if (!map.has(key)) map.set(key, { meetingKey: key, label, sessionKeys: [] });
+          map.get(key)!.sessionKeys.push({ name: s.session_name, key: s.session_key });
         }
         const opts = Array.from(map.values());
         setMeetings(opts);
         if (opts.length) setSelected(opts[opts.length - 1]);
+        else setLoading(false);
       } catch { setError('Failed to load sessions.'); setLoading(false); }
     }
     load();
@@ -93,12 +100,12 @@ export default function QualifyingPage() {
       try {
         const year = new Date().getFullYear();
         const all: OpenF1Session[] = await openf1Api.getSessionsByYear(year);
-        const sess = all.filter(s => s.meeting_name === selected!.label && (s.session_type === 'Qualifying' || s.session_name?.toLowerCase().includes('qualifying')));
+        const sess = all.filter(s => s.meeting_key === selected!.meetingKey && (s.session_type === 'Qualifying' || s.session_name?.toLowerCase().includes('qualifying')));
         if (!sess.length) { setError('No qualifying data found.'); setLoading(false); return; }
         const s = sess[sess.length - 1];
         setSession(s);
         await fetchData(s);
-        const live = s.date_end ? new Date(s.date_end) > new Date() : false;
+        const live = isLiveSession(s);
         setIsLive(live);
         if (live) intervalRef.current = window.setInterval(() => fetchData(s), 4000);
       } catch { setError('Failed to load qualifying data.'); }
@@ -120,7 +127,7 @@ export default function QualifyingPage() {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span className="f1-heading" style={{ fontSize: 17, color: '#f1f5f9' }}>
-              {session ? `${session.meeting_name} · ${session.session_name}` : 'Qualifying'}
+              {session ? `${sessionLabel(session)} · ${session.session_name}` : 'Qualifying'}
             </span>
             {isLive && <span style={{ fontSize: 10, background: 'rgba(239,68,68,0.2)', color: '#f87171', border: '1px solid rgba(239,68,68,0.4)', padding: '2px 7px', borderRadius: 4, fontWeight: 700 }}>LIVE</span>}
           </div>
@@ -130,10 +137,10 @@ export default function QualifyingPage() {
           {meetings.length > 0 && (
             <select
               style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)', color: '#cbd5e1', fontSize: 12, padding: '5px 10px', borderRadius: 6, cursor: 'pointer' }}
-              value={selected?.label ?? ''}
-              onChange={e => setSelected(meetings.find(m => m.label === e.target.value) ?? null)}
+              value={selected?.meetingKey ?? ''}
+              onChange={e => setSelected(meetings.find(m => m.meetingKey === Number(e.target.value)) ?? null)}
             >
-              {meetings.map(m => <option key={m.label} value={m.label}>{m.label}</option>)}
+              {meetings.map(m => <option key={m.meetingKey} value={m.meetingKey}>{m.label}</option>)}
             </select>
           )}
           {!error && (

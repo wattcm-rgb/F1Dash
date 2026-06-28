@@ -120,7 +120,9 @@ export const openf1Api = {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const sessions = await res.json();
       if (!sessions.length) return null;
-      return sessions[sessions.length - 1];
+      const now = new Date();
+      const past = sessions.filter((s: { date_start?: string }) => s.date_start && new Date(s.date_start) <= now);
+      return past.length ? past[past.length - 1] : null;
     } catch (error) {
       console.error('Failed to fetch latest session:', error);
       return null;

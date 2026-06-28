@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { openf1Api } from '../services/openf1Api';
 import type { OpenF1Session, OpenF1Driver, OpenF1Lap, OpenF1Stint, OpenF1Weather } from '../types/openf1';
+import { sessionLabel, isLiveSession, isPastSession } from '../types/openf1';
 import { TYRE_COLOUR, TYRE_LABEL, fmtTime, overallSectorBests, driverLapStats, sectorClasses, currentStint, tyreAge, placeholderDriver } from '../utils/timing';
 import WeatherChip from '../components/WeatherChip';
 
@@ -88,9 +89,12 @@ export default function RacePage() {
       try {
         const year = new Date().getFullYear();
         const sessions: OpenF1Session[] = await openf1Api.getSessionsByYear(year);
-        const opts = sessions.filter(s => s.session_type === 'Race' && s.session_name === 'Race').map(s => ({ label: s.meeting_name, sessionKey: s.session_key }));
+        const opts = sessions
+          .filter(s => s.session_type === 'Race' && s.session_name === 'Race' && isPastSession(s))
+          .map(s => ({ label: sessionLabel(s), sessionKey: s.session_key }));
         setMeetings(opts);
         if (opts.length) setSelectedKey(opts[opts.length - 1].sessionKey);
+        else setLoading(false);
       } catch { setError('Failed to load race list.'); setLoading(false); }
     }
     init();
@@ -124,7 +128,7 @@ export default function RacePage() {
         setTotalLaps(RACE_LAPS[s.circuit_short_name] ?? null);
         const key = selectedKey as number;
         await fetchData(key);
-        const live = s.date_end ? new Date(s.date_end) > new Date() : false;
+        const live = isLiveSession(s);
         setIsLive(live);
         if (live) intervalRef.current = window.setInterval(() => fetchData(key), 4000);
       } catch { setError('Failed to load race data.'); }
@@ -150,7 +154,7 @@ export default function RacePage() {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span className="f1-heading" style={{ fontSize: 17, color: '#f1f5f9' }}>
-              {session ? `${session.meeting_name} · Race` : 'Race'}
+              {session ? `${sessionLabel(session)} · Race` : 'Race'}
             </span>
             {isLive && <span style={{ fontSize: 10, background: 'rgba(239,68,68,0.2)', color: '#f87171', border: '1px solid rgba(239,68,68,0.4)', padding: '2px 7px', borderRadius: 4, fontWeight: 700 }}>LIVE</span>}
           </div>
