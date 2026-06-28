@@ -24,9 +24,6 @@ const FEEDS: FeedConfig[] = [
   { name: 'Sky Sports F1', url: 'https://www.skysports.com/rss/11095' },
 ];
 
-const RSS2JSON = 'https://api.rss2json.com/v1/api.json?rss_url=';
-const ALLORIGINS = 'https://api.allorigins.win/raw?url=';
-
 function fmtDate(dateStr: string): string {
   try {
     return new Intl.DateTimeFormat('en-GB', {
@@ -42,59 +39,90 @@ function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, '').trim();
 }
 
-// Primary path: rss2json (clean JSON, includes thumbnails).
-async function fetchViaRss2Json(feed: FeedConfig): Promise<NewsItem[]> {
-  const res = await fetch(`${RSS2JSON}${encodeURIComponent(feed.url)}`);
-  if (!res.ok) throw new Error(`rss2json HTTP ${res.status}`);
-  const data = await res.json();
-  if (data.status !== 'ok') throw new Error(`rss2json status ${data.status}`);
-  return (data.items ?? []).map((item: { title: string; link: string; pubDate: string; description: string; thumbnail: string }) => ({
-    title: item.title,
-    link: item.link,
-    pubDate: item.pubDate,
-    description: item.description,
-    thumbnail: item.thumbnail,
-    source: feed.name,
-  }));
+// Every external fetch is bounded — a hung proxy must never leave the page
+// stuck on "Loading…".
+async function fetchWithTimeout(url: string, ms = 8000): Promise<Response> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { signal: ctrl.signal });
+  } finally {
+    clearTimeout(t);
+  }
 }
 
-// Fallback path: fetch the raw RSS XML through a CORS proxy and parse it in the
-// browser. Covers feeds that rss2json occasionally fails to fetch (e.g. Sky).
-async function fetchViaAllOrigins(feed: FeedConfig): Promise<NewsItem[]> {
-  const res = await fetch(`${ALLORIGINS}${encodeURIComponent(feed.url)}`);
-  if (!res.ok) throw new Error(`allorigins HTTP ${res.status}`);
-  const xml = await res.text();
+// Parse raw RSS/Atom XML into our item shape.
+function parseRss(xml: string, feedName: string): NewsItem[] {
   const doc = new DOMParser().parseFromString(xml, 'text/xml');
   if (doc.querySelector('parsererror')) throw new Error('xml parse error');
-  return Array.from(doc.querySelectorAll('item')).map(el => {
-    const get = (tag: string) => el.querySelector(tag)?.textContent ?? '';
+  const nodes = Array.from(doc.querySelectorAll('item, entry'));
+  return nodes.map(el => {
+    const get = (tag: string) => el.querySelector(tag)?.textContent?.trim() ?? '';
+    // <link> is text in RSS but an href attribute in Atom
+    let link = get('link');
+    if (!link) link = el.querySelector('link')?.getAttribute('href') ?? '';
     let thumbnail = '';
-    const media = el.getElementsByTagName('media:content')[0] || el.getElementsByTagName('media:thumbnail')[0];
+    const media = el.getElementsByTagName('media:content')[0]
+      || el.getElementsByTagName('media:thumbnail')[0];
     if (media) thumbnail = media.getAttribute('url') ?? '';
-    if (!thumbnail) {
-      const enc = el.querySelector('enclosure');
-      if (enc) thumbnail = enc.getAttribute('url') ?? '';
-    }
+    if (!thumbnail) thumbnail = el.querySelector('enclosure')?.getAttribute('url') ?? '';
     return {
       title: get('title'),
-      link: get('link'),
-      pubDate: get('pubDate'),
-      description: get('description'),
+      link,
+      pubDate: get('pubDate') || get('published') || get('updated'),
+      description: get('description') || get('summary') || get('content'),
       thumbnail,
-      source: feed.name,
+      source: feedName,
     };
-  });
+  }).filter(i => i.title && i.link);
 }
 
+// Ordered proxy chain. Each returns items or throws; the first that yields any
+// items wins. A JSON service plus raw-XML CORS proxies for resilience.
+const PROXIES: ((feed: FeedConfig) => Promise<NewsItem[]>)[] = [
+  // rss2json — clean JSON with thumbnails
+  async (feed) => {
+    const res = await fetchWithTimeout(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feed.url)}`);
+    if (!res.ok) throw new Error(`rss2json HTTP ${res.status}`);
+    const data = await res.json();
+    if (data.status !== 'ok') throw new Error(`rss2json status ${data.status}`);
+    return (data.items ?? []).map((item: { title: string; link: string; pubDate: string; description: string; thumbnail: string }) => ({
+      title: item.title, link: item.link, pubDate: item.pubDate,
+      description: item.description, thumbnail: item.thumbnail, source: feed.name,
+    }));
+  },
+  // allorigins raw XML
+  async (feed) => {
+    const res = await fetchWithTimeout(`https://api.allorigins.win/raw?url=${encodeURIComponent(feed.url)}`);
+    if (!res.ok) throw new Error(`allorigins HTTP ${res.status}`);
+    return parseRss(await res.text(), feed.name);
+  },
+  // allorigins JSON wrapper (.contents) — survives raw-endpoint outages
+  async (feed) => {
+    const res = await fetchWithTimeout(`https://api.allorigins.win/get?url=${encodeURIComponent(feed.url)}`);
+    if (!res.ok) throw new Error(`allorigins get HTTP ${res.status}`);
+    const data = await res.json();
+    return parseRss(data.contents ?? '', feed.name);
+  },
+  // corsproxy.io raw XML
+  async (feed) => {
+    const res = await fetchWithTimeout(`https://corsproxy.io/?url=${encodeURIComponent(feed.url)}`);
+    if (!res.ok) throw new Error(`corsproxy HTTP ${res.status}`);
+    return parseRss(await res.text(), feed.name);
+  },
+];
+
 async function fetchFeed(feed: FeedConfig): Promise<NewsItem[]> {
-  try {
-    const items = await fetchViaRss2Json(feed);
-    if (items.length) return items;
-    // empty result — try the fallback before giving up
-    return await fetchViaAllOrigins(feed);
-  } catch {
-    return await fetchViaAllOrigins(feed);
+  let lastErr: unknown;
+  for (const proxy of PROXIES) {
+    try {
+      const items = await proxy(feed);
+      if (items.length) return items;
+    } catch (e) {
+      lastErr = e;
+    }
   }
+  throw lastErr ?? new Error('no items');
 }
 
 export default function NewsPage() {

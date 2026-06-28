@@ -408,7 +408,20 @@ export default function LivePage() {
   if (!isLive) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center', padding: '60px 0' }}>
-        <div style={{ fontSize: 48 }}>🏎</div>
+        <svg
+          width={132} height={70} viewBox="0 0 64 34" fill="none"
+          stroke="#f87171" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+          style={{ filter: 'drop-shadow(0 0 12px rgba(239,68,68,0.5))' }}
+        >
+          <circle cx="16" cy="24" r="6" />
+          <circle cx="47" cy="24" r="6" />
+          <path d="M3 12 L11 12" />
+          <path d="M6 12 L6 19" />
+          <path d="M6 19 C9 19 9 13 16 12 L20 12 C23 12 24 16 30 16 L38 16 C46 16 50 19 61 19 L61 22 L55 22" />
+          <path d="M21 12.5 C22 9 28 9 29 13.5" />
+          <path d="M62 18 L62 23" />
+          <path d="M22 27 L41 27" />
+        </svg>
         <div style={{ fontSize: 18, fontWeight: 700, color: '#f1f5f9' }}>No live race right now</div>
         {session && (
           <div style={{ fontSize: 13, color: '#64748b' }}>
