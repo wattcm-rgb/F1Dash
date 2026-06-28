@@ -143,7 +143,7 @@ export default function Layout() {
                     ? <PodiumIcon size={24} active={active} />
                     : item.news
                     ? <NewsIcon size={24} active={active} />
-                    : <img src={item.icon} alt="" style={{ width: 24, height: 24, opacity: active ? 1 : 0.75, filter: active ? 'drop-shadow(0 0 4px rgba(168,85,247,0.6))' : 'none' }} />}
+                    : <img src={item.icon} alt="" style={{ width: 24, height: 24, opacity: 1, filter: active ? 'drop-shadow(0 0 4px rgba(168,85,247,0.6))' : 'none' }} />}
                   {item.label}
                 </div>
               </Link>
