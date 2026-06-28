@@ -1,16 +1,15 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import ErrorBoundary from './ErrorBoundary';
-import practiceIcon from '../icons/practice_icon.png';
 import qualifyingIcon from '../icons/qualifying_icon.png';
 import raceIcon from '../icons/race_icon.png';
 import calendarIcon from '../icons/calendar_icon.png';
 
-interface NavItem { to: string; label: string; icon?: string; home?: boolean; news?: boolean; }
+interface NavItem { to: string; label: string; icon?: string; home?: boolean; news?: boolean; live?: boolean; }
 
 const NAV: NavItem[] = [
   { to: '/',           label: 'Home',       home: true },
+  { to: '/live',       label: 'Live',       live: true },
   { to: '/calendar',   label: 'Calendar',   icon: calendarIcon },
-  { to: '/practice',   label: 'Practice',   icon: practiceIcon },
   { to: '/qualifying', label: 'Qualifying', icon: qualifyingIcon },
   { to: '/race',       label: 'Race',       icon: raceIcon },
   { to: '/news',       label: 'News',       news: true },
@@ -25,6 +24,22 @@ function NewsIcon({ size, active }: { size: number; active: boolean }) {
     >
       <rect x="3" y="3" width="18" height="18" rx="2" />
       <path d="M7 8h10M7 12h10M7 16h6" />
+    </svg>
+  );
+}
+
+function LiveIcon({ size, active }: { size: number; active: boolean }) {
+  return (
+    <svg
+      width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+      style={{ filter: active ? 'drop-shadow(0 0 5px rgba(239,68,68,0.7))' : 'none', color: active ? '#ef4444' : 'currentColor' }}
+    >
+      <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />
+      <path d="M8.5 8.5a5 5 0 0 0 0 7" />
+      <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+      <path d="M5 5a10 10 0 0 0 0 14" />
+      <path d="M19 5a10 10 0 0 1 0 14" />
     </svg>
   );
 }
@@ -86,6 +101,8 @@ export default function Layout() {
                 }}>
                   {item.home
                     ? <HomeIcon size={24} active={active} />
+                    : item.live
+                    ? <LiveIcon size={24} active={active} />
                     : item.news
                     ? <NewsIcon size={24} active={active} />
                     : <img src={item.icon} alt="" style={{ width: 24, height: 24, opacity: active ? 1 : 0.75, filter: active ? 'drop-shadow(0 0 4px rgba(168,85,247,0.6))' : 'none' }} />}
@@ -120,6 +137,8 @@ export default function Layout() {
             <Link key={item.to} to={item.to} className={`bottom-nav-item${active ? ' active' : ''}`}>
               {item.home
                 ? <HomeIcon size={28} active={active} />
+                : item.live
+                ? <LiveIcon size={28} active={active} />
                 : item.news
                 ? <NewsIcon size={28} active={active} />
                 : <img src={item.icon} alt="" />}

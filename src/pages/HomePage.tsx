@@ -1,14 +1,15 @@
 import { Link } from 'react-router-dom';
-import practiceIcon from '../icons/practice_icon.png';
 import qualifyingIcon from '../icons/qualifying_icon.png';
 import raceIcon from '../icons/race_icon.png';
 import calendarIcon from '../icons/calendar_icon.png';
 
-const CARDS = [
-  { to: '/calendar',   icon: calendarIcon,   title: 'Calendar',   desc: 'Season schedule', sub: 'Timezones · Session times' },
-  { to: '/practice',   icon: practiceIcon,   title: 'Practice',   desc: 'Live timing data', sub: 'Driver times · Tyre strategies' },
+interface CardDef { to: string; title: string; desc: string; sub: string; icon?: string; live?: boolean; }
+
+const CARDS: CardDef[] = [
+  { to: '/calendar',   icon: calendarIcon,   title: 'Calendar',   desc: 'Season schedule',      sub: 'Timezones · Session times' },
+  { to: '/live',       live: true,           title: 'Live',       desc: 'Real-time race data',  sub: 'Leaderboard · Pit stops · Track map' },
   { to: '/qualifying', icon: qualifyingIcon, title: 'Qualifying', desc: 'Q1 · Q2 · Q3 sessions', sub: 'Sector times · Eliminations' },
-  { to: '/race',       icon: raceIcon,       title: 'Race',       desc: 'Live race tracking', sub: 'Gaps · Pit stops · Battles' },
+  { to: '/race',       icon: raceIcon,       title: 'Race',       desc: 'Race results',         sub: 'Positions · Times · Points' },
 ];
 
 const FEATURES = [
@@ -45,7 +46,19 @@ export default function HomePage() {
         {CARDS.map(card => (
           <Link key={card.to} to={card.to} style={{ textDecoration: 'none' }}>
             <div className="glass home-card" style={{ padding: 20, height: '100%', display: 'flex', flexDirection: 'column', gap: 4, transition: 'transform 0.15s, border-color 0.15s' }}>
-              <img src={card.icon} alt="" className="home-card-icon" style={{ width: 96, height: 96, marginBottom: 14 }} />
+              {card.live ? (
+                <div style={{ width: 96, height: 96, marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width={56} height={56} viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ filter: 'drop-shadow(0 0 8px rgba(239,68,68,0.5))' }}>
+                    <circle cx="12" cy="12" r="2.5" fill="#ef4444" stroke="none" />
+                    <path d="M8.5 8.5a5 5 0 0 0 0 7" />
+                    <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+                    <path d="M5 5a10 10 0 0 0 0 14" />
+                    <path d="M19 5a10 10 0 0 1 0 14" />
+                  </svg>
+                </div>
+              ) : (
+                <img src={card.icon} alt="" className="home-card-icon" style={{ width: 96, height: 96, marginBottom: 14 }} />
+              )}
               <h2 className="f1-heading" style={{ fontSize: 18, margin: 0, color: '#f1f5f9' }}>{card.title}</h2>
               <p style={{ fontSize: 13, color: '#94a3b8', margin: 0 }}>{card.desc}</p>
               <p style={{ fontSize: 11, color: '#475569', margin: '6px 0 0' }}>{card.sub}</p>
