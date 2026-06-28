@@ -30,7 +30,11 @@ function fmtGap(pole: string, time: string | undefined): string {
 
 type Tab = 'Q1' | 'Q2' | 'Q3';
 
+const CURRENT_YEAR = new Date().getFullYear();
+const YEARS = Array.from({ length: CURRENT_YEAR - 2017 }, (_, i) => CURRENT_YEAR - i);
+
 export default function QualifyingPage() {
+  const [year, setYear] = useState(CURRENT_YEAR);
   const [rounds, setRounds] = useState<Round[]>([]);
   const [selectedRound, setSelectedRound] = useState<number | null>(null);
   const [results, setResults] = useState<QualResult[]>([]);
@@ -40,9 +44,9 @@ export default function QualifyingPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    setRounds([]); setSelectedRound(null); setResults([]); setRaceName(''); setError(null); setLoading(true);
     async function load() {
       try {
-        const year = new Date().getFullYear();
         const data = await jolpicaApi.getRaces(year);
         // include races up to 2 days from now so a current race weekend shows qualifying
         const cutoff = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
@@ -64,7 +68,7 @@ export default function QualifyingPage() {
       }
     }
     load();
-  }, []);
+  }, [year]);
 
   useEffect(() => {
     if (selectedRound == null) return;
@@ -73,7 +77,6 @@ export default function QualifyingPage() {
     setResults([]);
     async function load() {
       try {
-        const year = new Date().getFullYear();
         const data = await jolpicaApi.getQualifyingResults(year, selectedRound!);
         const race = data?.MRData?.RaceTable?.Races?.[0];
         if (!race?.QualifyingResults?.length) {
@@ -106,7 +109,7 @@ export default function QualifyingPage() {
       }
     }
     load();
-  }, [selectedRound]);
+  }, [selectedRound, year]);
 
   const round = rounds.find(r => r.round === selectedRound);
   const pole = results[0];
@@ -122,29 +125,26 @@ export default function QualifyingPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-      <div className="glass" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-        <div>
-          <div className="f1-heading" style={{ fontSize: 17, color: '#f1f5f9' }}>
-            {raceName || round?.raceName || 'Qualifying'}
-          </div>
-          {round && (
-            <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>
-              {round.locality} · {round.country}
-            </div>
-          )}
-        </div>
+      {/* prominent filters, side by side, above the header */}
+      <div className="filter-bar">
+        <select value={year} onChange={e => setYear(Number(e.target.value))}>
+          {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
         {rounds.length > 0 && (
-          <select
-            style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)', color: '#cbd5e1', fontSize: 12, padding: '5px 10px', borderRadius: 6, cursor: 'pointer' }}
-            value={selectedRound ?? ''}
-            onChange={e => setSelectedRound(Number(e.target.value))}
-          >
+          <select value={selectedRound ?? ''} onChange={e => setSelectedRound(Number(e.target.value))} style={{ minWidth: 200 }}>
             {rounds.map(r => (
-              <option key={r.round} value={r.round}>
-                Rd {r.round} · {r.raceName.replace(' Grand Prix', '')}
-              </option>
+              <option key={r.round} value={r.round}>Rd {r.round} · {r.raceName.replace(' Grand Prix', '')}</option>
             ))}
           </select>
+        )}
+      </div>
+
+      <div className="glass" style={{ padding: '12px 16px' }}>
+        <div className="f1-heading" style={{ fontSize: 17, color: '#f1f5f9' }}>
+          {raceName || round?.raceName || 'Qualifying'}
+        </div>
+        {round && (
+          <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>{round.locality} · {round.country}</div>
         )}
       </div>
 

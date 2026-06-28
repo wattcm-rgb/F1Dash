@@ -40,4 +40,10 @@ export const jolpicaApi = {
     const res = await fetch(`${BASE_URL}/${season}/${round}/qualifying.json`);
     return res.json();
   },
+
+  // Every race result for one driver in a season (used for expandable standings rows).
+  async getDriverSeasonResults(season: number, driverId: string) {
+    const res = await fetch(`${BASE_URL}/${season}/drivers/${driverId}/results.json?limit=100`);
+    return res.json();
+  },
 };

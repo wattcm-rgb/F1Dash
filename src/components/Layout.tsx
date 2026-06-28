@@ -1,5 +1,7 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import ErrorBoundary from './ErrorBoundary';
+import { useLiveSession } from '../hooks/useLiveSession';
+import { sessionLabel } from '../types/openf1';
 import qualifyingIcon from '../icons/qualifying_icon.png';
 import raceIcon from '../icons/race_icon.png';
 import calendarIcon from '../icons/calendar_icon.png';
@@ -81,6 +83,7 @@ function HomeIcon({ size, active }: { size: number; active: boolean }) {
 export default function Layout() {
   const { pathname } = useLocation();
   const isActive = (to: string) => to === '/' ? pathname === '/' : (pathname === to || pathname.startsWith(to));
+  const { session, isLive } = useLiveSession();
 
   return (
     <div className="app-shell">
@@ -99,10 +102,23 @@ export default function Layout() {
         </div>
 
         <div style={{ padding: '0 16px 20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 6 }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 6px #ef4444', flexShrink: 0 }} />
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#f87171', letterSpacing: '0.08em' }}>LIVE</span>
-          </div>
+          <Link to={isLive ? '/live' : '/calendar'} style={{ textDecoration: 'none' }}>
+            {isLive ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 6 }}>
+                <span className="live-pulse" style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 6px #ef4444', flexShrink: 0 }} />
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#f87171', letterSpacing: '0.08em' }}>
+                  LIVE{session ? ` · ${sessionLabel(session)}` : ''}
+                </span>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: 'rgba(100,116,139,0.1)', border: '1px solid rgba(100,116,139,0.2)', borderRadius: 6 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#475569', flexShrink: 0 }} />
+                <span style={{ fontSize: 10, fontWeight: 600, color: '#64748b', letterSpacing: '0.04em' }}>
+                  No Active Session in Progress
+                </span>
+              </div>
+            )}
+          </Link>
         </div>
 
         <nav style={{ padding: '0 8px', flex: 1 }}>
@@ -136,8 +152,8 @@ export default function Layout() {
         </nav>
 
         <div style={{ padding: '16px 20px 0', borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 'auto' }}>
-          <div style={{ fontSize: 10, color: '#334155' }}>Self-hosted OpenF1</div>
-          <div style={{ fontSize: 10, color: '#1e293b', marginTop: 2 }}>167.233.76.227:8000</div>
+          <div style={{ fontSize: 10, color: '#334155' }}>Data: OpenF1 + Jolpica</div>
+          <div style={{ fontSize: 10, color: '#1e293b', marginTop: 2 }}>via Cloudflare Worker</div>
         </div>
       </aside>
 

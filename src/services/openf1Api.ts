@@ -35,10 +35,10 @@ export const openf1Api = {
   getDrivers: () => req('/drivers', []),
 
   getIntervals: (sessionKey: number) =>
-    req(`/intervals?session_key=${sessionKey}&limit=100`, []),
+    req(`/intervals?session_key=${sessionKey}`, []),
 
   getLaps: (sessionKey: number) =>
-    req(`/laps?session_key=${sessionKey}&limit=10000`, []),
+    req(`/laps?session_key=${sessionKey}`, []),
 
   getPitStops: (sessionKey: number) =>
     req(`/pit?session_key=${sessionKey}`, []),
@@ -60,7 +60,7 @@ export const openf1Api = {
     req(`/drivers?session_key=${sessionKey}`, []),
 
   getLocation: (sessionKey: number, since?: string) =>
-    req(`/location?session_key=${sessionKey}&limit=10000${since ? `&date>${since}` : ''}`, []),
+    req(`/location?session_key=${sessionKey}${since ? `&date>${since}` : ''}`, []),
 
   // Position trace for a single driver over a time window — used to build the
   // static track outline in advance from an earlier session of the same meeting.
@@ -76,5 +76,12 @@ export const openf1Api = {
     const now = new Date();
     const past = sessions.filter((s) => s.date_start && new Date(s.date_start) <= now);
     return past.length ? past[past.length - 1] : null;
+  },
+
+  // The single most-recent session of any type (OpenF1's `latest` keyword). Used to
+  // decide whether anything is live right now for the sidebar indicator.
+  async getCurrentSession(): Promise<OpenF1Session | null> {
+    const sessions = await req<OpenF1Session[]>(`/sessions?session_key=latest`, []);
+    return sessions.length ? sessions[0] : null;
   },
 };
