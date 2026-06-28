@@ -5,7 +5,7 @@ import qualifyingIcon from '../icons/qualifying_icon.png';
 import raceIcon from '../icons/race_icon.png';
 import calendarIcon from '../icons/calendar_icon.png';
 
-interface NavItem { to: string; label: string; icon?: string; home?: boolean; }
+interface NavItem { to: string; label: string; icon?: string; home?: boolean; news?: boolean; }
 
 const NAV: NavItem[] = [
   { to: '/',           label: 'Home',       home: true },
@@ -13,7 +13,21 @@ const NAV: NavItem[] = [
   { to: '/practice',   label: 'Practice',   icon: practiceIcon },
   { to: '/qualifying', label: 'Qualifying', icon: qualifyingIcon },
   { to: '/race',       label: 'Race',       icon: raceIcon },
+  { to: '/news',       label: 'News',       news: true },
 ];
+
+function NewsIcon({ size, active }: { size: number; active: boolean }) {
+  return (
+    <svg
+      width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+      style={{ filter: active ? 'drop-shadow(0 0 4px rgba(168,85,247,0.6))' : 'none' }}
+    >
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M7 8h10M7 12h10M7 16h6" />
+    </svg>
+  );
+}
 
 function HomeIcon({ size, active }: { size: number; active: boolean }) {
   return (
@@ -72,6 +86,8 @@ export default function Layout() {
                 }}>
                   {item.home
                     ? <HomeIcon size={24} active={active} />
+                    : item.news
+                    ? <NewsIcon size={24} active={active} />
                     : <img src={item.icon} alt="" style={{ width: 24, height: 24, opacity: active ? 1 : 0.75, filter: active ? 'drop-shadow(0 0 4px rgba(168,85,247,0.6))' : 'none' }} />}
                   {item.label}
                 </div>
@@ -104,6 +120,8 @@ export default function Layout() {
             <Link key={item.to} to={item.to} className={`bottom-nav-item${active ? ' active' : ''}`}>
               {item.home
                 ? <HomeIcon size={28} active={active} />
+                : item.news
+                ? <NewsIcon size={28} active={active} />
                 : <img src={item.icon} alt="" />}
               {item.label}
             </Link>
