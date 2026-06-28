@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { openf1Api } from '../services/openf1Api';
 import type { OpenF1Session, OpenF1Driver, OpenF1Lap, OpenF1Stint, OpenF1Weather } from '../types/openf1';
-import { isLiveSession, sessionLabel } from '../types/openf1';
+import { isLiveSession, isPastSession, sessionLabel } from '../types/openf1';
 import { TYRE_COLOUR, TYRE_LABEL, fmtTime, driverLapStats, currentStint, tyreAge } from '../utils/timing';
 import WeatherChip from '../components/WeatherChip';
 
@@ -131,6 +131,8 @@ export default function LivePage() {
   const trailsRef = useRef<Map<number, { x: number; y: number }[]>>(new Map());
   const [trailSnapshot, setTrailSnapshot] = useState<Map<number, { x: number; y: number }[]>>(new Map());
   const lastLocFetch = useRef<string | null>(null);
+  // static track outline, pre-fetched from one flying lap of an earlier session
+  const [trackOutline, setTrackOutline] = useState<{ x: number; y: number }[]>([]);
 
   const [tab, setTab] = useState<Tab>('LEADERBOARD');
   const [loading, setLoading] = useState(true);
@@ -176,8 +178,8 @@ export default function LivePage() {
     for (const p of pts) {
       const arr = updated.get(p.driver_number) ?? [];
       arr.push({ x: p.x, y: p.y });
-      // keep last 150 points per driver (~40 seconds at 3.7 Hz)
-      if (arr.length > 150) arr.splice(0, arr.length - 150);
+      // keep a short comet trail behind each car (~3s at 3.7 Hz)
+      if (arr.length > 12) arr.splice(0, arr.length - 12);
       updated.set(p.driver_number, arr);
     }
     trailsRef.current = updated;
@@ -216,6 +218,53 @@ export default function LivePage() {
     pollRef.current = window.setInterval(() => fetchAll(key), 4_000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [session, isLive, detecting, fetchAll]);
+
+  // Build the static track outline up-front, so the map is drawn complete from
+  // the first frame instead of tracing out as cars circulate. We take one clean
+  // flying lap of position data from an earlier session of the same meeting
+  // (qualifying/practice) — same circuit, same OpenF1 coordinate system as the
+  // live race, so live positions overlay exactly.
+  useEffect(() => {
+    if (!session || !isLive) return;
+    let cancelled = false;
+    const meetingKey = session.meeting_key;
+    const raceKey = session.session_key;
+
+    async function buildOutline() {
+      try {
+        const year = new Date().getFullYear();
+        const all: OpenF1Session[] = await openf1Api.getSessionsByYear(year);
+        const candidates = all
+          .filter(s => s.meeting_key === meetingKey && s.session_key !== raceKey && isPastSession(s))
+          .sort((a, b) => new Date(b.date_start).getTime() - new Date(a.date_start).getTime());
+        candidates.push(session!); // the race itself as a last resort
+
+        for (const cand of candidates) {
+          if (cancelled) return;
+          const laps: OpenF1Lap[] = await openf1Api.getLaps(cand.session_key);
+          const valid = laps.filter(
+            l => l.lap_duration != null && !l.is_pit_out_lap && l.lap_duration > 50 && l.lap_duration < 200 && l.date_start
+          );
+          if (!valid.length) continue;
+          valid.sort((a, b) => a.lap_duration! - b.lap_duration!); // fastest = cleanest trace
+          const lap = valid[0];
+          const start = new Date(lap.date_start).getTime();
+          const gt = new Date(start - 500).toISOString().replace('Z', '');
+          const lt = new Date(start + lap.lap_duration! * 1000 + 1500).toISOString().replace('Z', '');
+          const pts: LocationPt[] = await openf1Api.getLocationRange(cand.session_key, lap.driver_number, gt, lt);
+          const clean = pts.filter(p => p.x != null && p.y != null && !(p.x === 0 && p.y === 0));
+          if (clean.length > 30 && !cancelled) {
+            setTrackOutline(clean.map(p => ({ x: p.x, y: p.y })));
+            return;
+          }
+        }
+      } catch {
+        /* leave outline empty — the map falls back to tracing from live data */
+      }
+    }
+    buildOutline();
+    return () => { cancelled = true; };
+  }, [session, isLive]);
 
   // ── derived data ──
 
@@ -338,7 +387,10 @@ export default function LivePage() {
 
   const allPts: { x: number; y: number }[] = [];
   for (const pts of trailSnapshot.values()) allPts.push(...pts);
-  const transform = makeTransform(allPts, 600, 380, 30);
+  const hasOutline = trackOutline.length > 1;
+  // Transform is computed from the full track outline when we have it (stable
+  // bounds), otherwise from whatever live points have accumulated.
+  const transform = makeTransform(hasOutline ? trackOutline : allPts, 600, 380, 34);
 
   const latestPos = new Map<number, { x: number; y: number }>();
   for (const [dn, pts] of trailSnapshot.entries()) {
@@ -702,9 +754,9 @@ export default function LivePage() {
               </div>
 
               <div className="glass" style={{ padding: 12 }}>
-                {allPts.length === 0 ? (
+                {!hasOutline && allPts.length === 0 ? (
                   <div style={{ color: '#475569', textAlign: 'center', padding: '60px 0', fontSize: 13 }}>
-                    Waiting for position data…
+                    Loading track map…
                   </div>
                 ) : (
                   <svg
@@ -712,27 +764,51 @@ export default function LivePage() {
                     style={{ width: '100%', maxWidth: 700, display: 'block', margin: '0 auto' }}
                     xmlns="http://www.w3.org/2000/svg"
                   >
-                    {/* track outline from accumulated position history */}
-                    {Array.from(trailSnapshot.values()).map((pts, di) => {
+                    {hasOutline ? (
+                      /* Static outline, split into three arc-length sectors so a
+                         yellow/red flag tints the affected sector of the track. */
+                      (() => {
+                        const scr = trackOutline.map(p => transform(p.x, p.y));
+                        const n = scr.length;
+                        const bounds = [0, Math.floor(n / 3), Math.floor((2 * n) / 3), n];
+                        return [1, 2, 3].map(sector => {
+                          const seg = scr.slice(bounds[sector - 1], bounds[sector] + 1);
+                          if (seg.length < 2) return null;
+                          const flag = secFlags[sector];
+                          const col = flag ? flagColor(flag) : 'rgba(100,116,139,0.5)';
+                          const pts = seg.map(p => `${p.sx},${p.sy}`).join(' ');
+                          return (
+                            <polyline
+                              key={sector}
+                              points={pts}
+                              fill="none"
+                              stroke={col}
+                              strokeWidth={flag ? 7 : 5}
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          );
+                        });
+                      })()
+                    ) : (
+                      /* Fallback: trace faint trails until the outline loads. */
+                      Array.from(trailSnapshot.values()).map((pts, di) => {
+                        if (pts.length < 2) return null;
+                        const points = pts.map(p => { const { sx, sy } = transform(p.x, p.y); return `${sx},${sy}`; }).join(' ');
+                        return <polyline key={di} points={points} fill="none" stroke="rgba(100,116,139,0.25)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />;
+                      })
+                    )}
+
+                    {/* short comet trail behind each car */}
+                    {Array.from(trailSnapshot.entries()).map(([dn, pts]) => {
                       if (pts.length < 2) return null;
-                      const points = pts.map(p => {
-                        const { sx, sy } = transform(p.x, p.y);
-                        return `${sx},${sy}`;
-                      }).join(' ');
-                      return (
-                        <polyline
-                          key={di}
-                          points={points}
-                          fill="none"
-                          stroke="rgba(100,116,139,0.25)"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      );
+                      const d = driverMap.get(dn);
+                      if (!d) return null;
+                      const points = pts.map(p => { const { sx, sy } = transform(p.x, p.y); return `${sx},${sy}`; }).join(' ');
+                      return <polyline key={`t${dn}`} points={points} fill="none" stroke={`#${d.team_colour || '888'}`} strokeWidth={2} strokeOpacity={0.45} strokeLinecap="round" />;
                     })}
 
-                    {/* car positions */}
+                    {/* current car positions */}
                     {Array.from(latestPos.entries()).map(([dn, pos]) => {
                       const d = driverMap.get(dn);
                       if (!d) return null;
@@ -758,7 +834,9 @@ export default function LivePage() {
               </div>
 
               <div style={{ fontSize: 11, color: '#334155', textAlign: 'center' }}>
-                Car trails show position history. Track shape emerges from accumulated position data.
+                {hasOutline
+                  ? 'Track outline loaded from this weekend’s earlier sessions. Dots show live car positions; sectors tint on yellow/red flags.'
+                  : 'Loading track outline from earlier sessions… live car positions shown as they arrive.'}
               </div>
             </div>
           )}

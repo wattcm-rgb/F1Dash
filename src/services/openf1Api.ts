@@ -127,6 +127,20 @@ export const openf1Api = {
     }
   },
 
+  // Position trace for a single driver over a time window — used to build the
+  // static track outline in advance from an earlier session of the same meeting.
+  async getLocationRange(sessionKey: number, driverNumber: number, dateGt: string, dateLt: string) {
+    try {
+      const url = `${OPENF1_BASE_URL}/location?session_key=${sessionKey}&driver_number=${driverNumber}&date>${dateGt}&date<${dateLt}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    } catch (error) {
+      console.error('Failed to fetch location range:', error);
+      return [];
+    }
+  },
+
   async getLatestSession(type: 'Practice' | 'Qualifying' | 'Race') {
     try {
       const res = await fetch(`${OPENF1_BASE_URL}/sessions?session_type=${type}`);
