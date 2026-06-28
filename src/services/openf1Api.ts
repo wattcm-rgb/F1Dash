@@ -1,158 +1,73 @@
-// Public OpenF1 API is the default so the GitHub Pages (HTTPS) build works without
-// mixed-content issues. Override with VITE_OPENF1_BASE_URL once the VPS has TLS.
+import type { OpenF1Session } from '../types/openf1';
+
+// Default to the public OpenF1 API (HTTPS, no mixed-content issues on GitHub Pages).
+// Override the base URL with VITE_OPENF1_BASE_URL if proxying through your own host.
 const OPENF1_BASE_URL =
   import.meta.env.VITE_OPENF1_BASE_URL ?? 'https://api.openf1.org/v1';
 
+// Paid/real-time tier requires authentication. Set VITE_OPENF1_TOKEN to your OpenF1
+// access token and it is sent as `Authorization: Bearer <token>` on every request.
+// NOTE: a static site exposes this token publicly — anyone can read it from the JS
+// bundle. Use a proxy if the quota matters.
+const OPENF1_TOKEN = import.meta.env.VITE_OPENF1_TOKEN as string | undefined;
+
+const AUTH_HEADERS: HeadersInit | undefined = OPENF1_TOKEN
+  ? { Authorization: `Bearer ${OPENF1_TOKEN}` }
+  : undefined;
+
+// Single fetch helper so auth + error handling live in one place.
+async function req<T>(path: string, fallback: T): Promise<T> {
+  try {
+    const res = await fetch(`${OPENF1_BASE_URL}${path}`, AUTH_HEADERS ? { headers: AUTH_HEADERS } : undefined);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return (await res.json()) as T;
+  } catch (error) {
+    console.error(`OpenF1 request failed (${path}):`, error);
+    return fallback;
+  }
+}
+
 export const openf1Api = {
-  async getSessions() {
-    try {
-      const res = await fetch(`${OPENF1_BASE_URL}/sessions`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    } catch (error) {
-      console.error('Failed to fetch sessions:', error);
-      return [];
-    }
-  },
+  getSessions: () => req('/sessions', []),
 
-  async getSessionsByYear(year: number) {
-    try {
-      const res = await fetch(`${OPENF1_BASE_URL}/sessions?year=${year}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    } catch (error) {
-      console.error('Failed to fetch sessions by year:', error);
-      return [];
-    }
-  },
+  getSessionsByYear: (year: number) => req(`/sessions?year=${year}`, []),
 
-  async getDrivers() {
-    try {
-      const res = await fetch(`${OPENF1_BASE_URL}/drivers`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    } catch (error) {
-      console.error('Failed to fetch drivers:', error);
-      return [];
-    }
-  },
+  getDrivers: () => req('/drivers', []),
 
-  async getIntervals(sessionKey: number) {
-    try {
-      const res = await fetch(`${OPENF1_BASE_URL}/intervals?session_key=${sessionKey}&limit=100`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    } catch (error) {
-      console.error('Failed to fetch intervals:', error);
-      return [];
-    }
-  },
+  getIntervals: (sessionKey: number) =>
+    req(`/intervals?session_key=${sessionKey}&limit=100`, []),
 
-  async getLaps(sessionKey: number) {
-    try {
-      const res = await fetch(`${OPENF1_BASE_URL}/laps?session_key=${sessionKey}&limit=10000`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    } catch (error) {
-      console.error('Failed to fetch laps:', error);
-      return [];
-    }
-  },
+  getLaps: (sessionKey: number) =>
+    req(`/laps?session_key=${sessionKey}&limit=10000`, []),
 
-  async getPitStops(sessionKey: number) {
-    try {
-      const res = await fetch(`${OPENF1_BASE_URL}/pit_stops?session_key=${sessionKey}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    } catch (error) {
-      console.error('Failed to fetch pit stops:', error);
-      return [];
-    }
-  },
+  getPitStops: (sessionKey: number) =>
+    req(`/pit_stops?session_key=${sessionKey}`, []),
 
-  async getWeather(sessionKey: number) {
-    try {
-      const res = await fetch(`${OPENF1_BASE_URL}/weather?session_key=${sessionKey}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    } catch (error) {
-      console.error('Failed to fetch weather:', error);
-      return [];
-    }
-  },
+  getWeather: (sessionKey: number) =>
+    req(`/weather?session_key=${sessionKey}`, []),
 
-  async getRaceControlMessages(sessionKey: number) {
-    try {
-      const res = await fetch(`${OPENF1_BASE_URL}/race_control?session_key=${sessionKey}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    } catch (error) {
-      console.error('Failed to fetch race control messages:', error);
-      return [];
-    }
-  },
+  getRaceControlMessages: (sessionKey: number) =>
+    req(`/race_control?session_key=${sessionKey}`, []),
 
-  async getStints(sessionKey: number) {
-    try {
-      const res = await fetch(`${OPENF1_BASE_URL}/stints?session_key=${sessionKey}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    } catch (error) {
-      console.error('Failed to fetch stints:', error);
-      return [];
-    }
-  },
+  getStints: (sessionKey: number) =>
+    req(`/stints?session_key=${sessionKey}`, []),
 
-  async getDriversBySession(sessionKey: number) {
-    try {
-      const res = await fetch(`${OPENF1_BASE_URL}/drivers?session_key=${sessionKey}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    } catch (error) {
-      console.error('Failed to fetch drivers for session:', error);
-      return [];
-    }
-  },
+  getDriversBySession: (sessionKey: number) =>
+    req(`/drivers?session_key=${sessionKey}`, []),
 
-  async getLocation(sessionKey: number, since?: string) {
-    try {
-      let url = `${OPENF1_BASE_URL}/location?session_key=${sessionKey}&limit=10000`;
-      if (since) url += `&date>${since}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    } catch (error) {
-      console.error('Failed to fetch location:', error);
-      return [];
-    }
-  },
+  getLocation: (sessionKey: number, since?: string) =>
+    req(`/location?session_key=${sessionKey}&limit=10000${since ? `&date>${since}` : ''}`, []),
 
   // Position trace for a single driver over a time window — used to build the
   // static track outline in advance from an earlier session of the same meeting.
-  async getLocationRange(sessionKey: number, driverNumber: number, dateGt: string, dateLt: string) {
-    try {
-      const url = `${OPENF1_BASE_URL}/location?session_key=${sessionKey}&driver_number=${driverNumber}&date>${dateGt}&date<${dateLt}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    } catch (error) {
-      console.error('Failed to fetch location range:', error);
-      return [];
-    }
-  },
+  getLocationRange: (sessionKey: number, driverNumber: number, dateGt: string, dateLt: string) =>
+    req(`/location?session_key=${sessionKey}&driver_number=${driverNumber}&date>${dateGt}&date<${dateLt}`, []),
 
   async getLatestSession(type: 'Practice' | 'Qualifying' | 'Race') {
-    try {
-      const res = await fetch(`${OPENF1_BASE_URL}/sessions?session_type=${type}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const sessions = await res.json();
-      if (!sessions.length) return null;
-      const now = new Date();
-      const past = sessions.filter((s: { date_start?: string }) => s.date_start && new Date(s.date_start) <= now);
-      return past.length ? past[past.length - 1] : null;
-    } catch (error) {
-      console.error('Failed to fetch latest session:', error);
-      return null;
-    }
+    const sessions = await req<OpenF1Session[]>(`/sessions?session_type=${type}`, []);
+    if (!sessions.length) return null;
+    const now = new Date();
+    const past = sessions.filter((s) => s.date_start && new Date(s.date_start) <= now);
+    return past.length ? past[past.length - 1] : null;
   },
 };
