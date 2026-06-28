@@ -231,7 +231,7 @@ export default function LivePage() {
   // (qualifying/practice) — same circuit, same OpenF1 coordinate system as the
   // live race, so live positions overlay exactly.
   useEffect(() => {
-    if (!session || !isLive) return;
+    if (!session) return;
     let cancelled = false;
     const meetingKey = session.meeting_key;
     const raceKey = session.session_key;
@@ -270,7 +270,7 @@ export default function LivePage() {
     }
     buildOutline();
     return () => { cancelled = true; };
-  }, [session, isLive]);
+  }, [session]);
 
   // ── derived data ──
 
@@ -778,7 +778,7 @@ export default function LivePage() {
               <div className="glass" style={{ padding: 12 }}>
                 {!hasOutline && allPts.length === 0 ? (
                   <div style={{ color: '#475569', textAlign: 'center', padding: '60px 0', fontSize: 13 }}>
-                    {isLive ? 'Loading track map…' : 'The track map appears here during a live race.'}
+                    {session ? "Loading track outline from this weekend's sessions…" : 'No session data yet.'}
                   </div>
                 ) : (
                   <svg
@@ -859,8 +859,8 @@ export default function LivePage() {
                 {hasOutline
                   ? 'Track outline loaded from this weekend’s earlier sessions. Dots show live car positions; sectors tint on yellow/red flags.'
                   : isLive
-                    ? 'Loading track outline from earlier sessions… live car positions shown as they arrive.'
-                    : 'Live car positions and sector flags appear here during a race.'}
+                    ? 'Track outline loaded. Live car positions shown as they arrive.'
+                    : 'Track outline loaded from this weekend. Live car dots appear during a race.'}
               </div>
             </div>
           )}
