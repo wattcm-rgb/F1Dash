@@ -312,23 +312,25 @@ export default function LivePage() {
   const paceB = battleB != null ? avgRecentPace(battleB, laps) : null;
   const ivA = battleA != null ? latestIntervals.get(battleA) : undefined;
   const ivB = battleB != null ? latestIntervals.get(battleB) : undefined;
+  // Smaller gap-to-leader = further up the road. Positive gapAB → A is ahead of B.
   const gapAB = ivA && ivB
     ? gapVal(ivB.gap_to_leader) - gapVal(ivA.gap_to_leader)
-    : null; // positive = B is ahead of A
+    : null;
 
   let overtakeEst: string | null = null;
-  if (paceA != null && paceB != null && gapAB != null) {
-    const paceDiff = paceB - paceA; // positive = A is faster than B
-    if (gapAB < 0 && paceDiff > 0) {
-      // A is ahead and B is faster — B catching
-      const laps2catch = Math.abs(gapAB) / paceDiff;
-      overtakeEst = `${driverB?.name_acronym} catches in ~${laps2catch.toFixed(1)} laps`;
-    } else if (gapAB > 0 && paceDiff < 0) {
-      // B is ahead and A is faster — A catching
-      const laps2catch = gapAB / Math.abs(paceDiff);
-      overtakeEst = `${driverA?.name_acronym} catches in ~${laps2catch.toFixed(1)} laps`;
+  if (paceA != null && paceB != null && gapAB != null && driverA && driverB) {
+    const aAhead = gapAB > 0;
+    const timeGap = Math.abs(gapAB);
+    // The car that's behind needs to be the quicker one (lower lap time) to close in.
+    const behindName = aAhead ? driverB.name_acronym : driverA.name_acronym;
+    const behindPace = aAhead ? paceB : paceA;
+    const aheadPace = aAhead ? paceA : paceB;
+    const perLapGain = aheadPace - behindPace; // positive when the chasing car is faster
+    if (perLapGain > 0.001) {
+      const laps2catch = timeGap / perLapGain;
+      overtakeEst = `${behindName} catches in ~${laps2catch.toFixed(1)} laps`;
     } else {
-      overtakeEst = 'No catch-up based on current pace';
+      overtakeEst = 'No catch-up at current pace';
     }
   }
 
@@ -654,7 +656,7 @@ export default function LivePage() {
                           {Math.abs(gapAB).toFixed(3)}s
                         </div>
                         <div style={{ fontSize: 11, color: '#475569', marginTop: 2 }}>
-                          {gapAB > 0 ? `${driverB.name_acronym} is ahead` : `${driverA.name_acronym} is ahead`}
+                          {gapAB > 0 ? `${driverA.name_acronym} is ahead` : `${driverB.name_acronym} is ahead`}
                         </div>
                       </div>
                     )}
