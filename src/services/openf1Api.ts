@@ -41,7 +41,11 @@ export const openf1Api = {
     req(`/laps?session_key=${sessionKey}&limit=10000`, []),
 
   getPitStops: (sessionKey: number) =>
-    req(`/pit_stops?session_key=${sessionKey}`, []),
+    req(`/pit?session_key=${sessionKey}`, []),
+
+  // Authoritative running order / classification (one row per position change).
+  getPositions: (sessionKey: number) =>
+    req(`/position?session_key=${sessionKey}`, []),
 
   getWeather: (sessionKey: number) =>
     req(`/weather?session_key=${sessionKey}`, []),

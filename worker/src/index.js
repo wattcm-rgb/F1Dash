@@ -17,15 +17,16 @@ const OPENF1 = 'https://api.openf1.org';
 // Per-endpoint cache lifetime (seconds). Tuned so total upstream calls stay < 60/min
 // even while the live page polls every 4s. Fast-changing data: short; static-ish: long.
 const TTL = {
-  intervals: 4,
-  location: 4,
-  laps: 5,
-  race_control: 12,
-  pit_stops: 15,
-  stints: 20,
+  intervals: 5,
+  position: 5,
+  location: 6,
+  laps: 6,
+  race_control: 15,
+  pit: 20,
+  stints: 30,
   weather: 60,
-  drivers: 120,
-  sessions: 120,
+  drivers: 300,
+  sessions: 300,
 };
 const DEFAULT_TTL = 8;
 

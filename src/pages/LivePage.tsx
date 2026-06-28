@@ -32,6 +32,8 @@ interface RcMsg {
 
 interface LocationPt { driver_number: number; x: number; y: number; date: string; }
 
+interface PositionRow { driver_number: number; position: number; date: string; }
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 function gapVal(g: number | string | null): number {
@@ -125,6 +127,7 @@ export default function LivePage() {
   const [stints, setStints] = useState<OpenF1Stint[]>([]);
   const [pitStops, setPitStops] = useState<PitStop[]>([]);
   const [intervals, setIntervals] = useState<Interval[]>([]);
+  const [positions, setPositions] = useState<PositionRow[]>([]);
   const [rcMsgs, setRcMsgs] = useState<RcMsg[]>([]);
   const [weather, setWeather] = useState<OpenF1Weather | null>(null);
 
@@ -188,7 +191,7 @@ export default function LivePage() {
   }, []);
 
   const fetchAll = useCallback(async (key: number) => {
-    const [l, st, d, pit, iv, rc, wx] = await Promise.all([
+    const [l, st, d, pit, iv, rc, wx, pos] = await Promise.all([
       openf1Api.getLaps(key),
       openf1Api.getStints(key),
       openf1Api.getDriversBySession(key),
@@ -196,12 +199,14 @@ export default function LivePage() {
       openf1Api.getIntervals(key),
       openf1Api.getRaceControlMessages(key),
       openf1Api.getWeather(key),
+      openf1Api.getPositions(key),
     ]);
     setLaps(l);
     setStints(st);
     if (d.length) setDrivers(d);
     setPitStops(pit);
     setIntervals(iv);
+    setPositions(pos);
     setRcMsgs(rc);
     if (wx.length) setWeather(wx[wx.length - 1]);
     setUpdated(new Date());
@@ -272,6 +277,16 @@ export default function LivePage() {
   const latestIntervals = new Map<number, Interval>();
   for (const iv of intervals) latestIntervals.set(iv.driver_number, iv);
 
+  // Authoritative running order from /position (latest row per driver by date).
+  const latestPosition = new Map<number, number>();
+  {
+    const seenDate = new Map<number, string>();
+    for (const p of positions) {
+      const prev = seenDate.get(p.driver_number);
+      if (!prev || p.date > prev) { seenDate.set(p.driver_number, p.date); latestPosition.set(p.driver_number, p.position); }
+    }
+  }
+
   interface LBRow {
     pos: number;
     driver: OpenF1Driver;
@@ -307,8 +322,17 @@ export default function LivePage() {
 
   const investigated = getInvestigated(rcMsgs);
 
+  // Primary sort: official /position. Fallback: gap-to-leader when a driver has
+  // no position row yet (e.g. very start of a session).
   const sortedBoard: LBRow[] = leaderboard
-    .sort((a, b) => gapVal((a as any).gapRaw) - gapVal((b as any).gapRaw))
+    .sort((a, b) => {
+      const pa = latestPosition.get(a.driver.driver_number);
+      const pb = latestPosition.get(b.driver.driver_number);
+      if (pa != null && pb != null) return pa - pb;
+      if (pa != null) return -1;
+      if (pb != null) return 1;
+      return gapVal((a as any).gapRaw) - gapVal((b as any).gapRaw);
+    })
     .map((r, i) => ({
       ...r,
       pos: i + 1,
