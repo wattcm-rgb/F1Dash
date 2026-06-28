@@ -114,6 +114,19 @@ export const openf1Api = {
     }
   },
 
+  async getLocation(sessionKey: number, since?: string) {
+    try {
+      let url = `${OPENF1_BASE_URL}/location?session_key=${sessionKey}&limit=10000`;
+      if (since) url += `&date>${since}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    } catch (error) {
+      console.error('Failed to fetch location:', error);
+      return [];
+    }
+  },
+
   async getLatestSession(type: 'Practice' | 'Qualifying' | 'Race') {
     try {
       const res = await fetch(`${OPENF1_BASE_URL}/sessions?session_type=${type}`);
