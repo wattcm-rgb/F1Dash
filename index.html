@@ -5,7 +5,22 @@
     <link rel="icon" type="image/svg+xml" href="/F1Dash/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>f1-dash</title>
-    <script type="module" crossorigin src="/F1Dash/assets/index-BWpdjYqt.js"></script>
+    <script>
+      // Single Page Apps for GitHub Pages — https://github.com/rafgraph/spa-github-pages
+      // Restores the path that was encoded into the query string by 404.html.
+      (function(l) {
+        if (l.search[1] === '/') {
+          var decoded = l.search.slice(1).split('&').map(function(s) {
+            return s.replace(/~and~/g, '&');
+          });
+          window.history.replaceState(null, null,
+            l.pathname.slice(0, -1) + decoded[0] +
+            (decoded[1] ? '&' + decoded[1] : '') + l.hash
+          );
+        }
+      }(window.location));
+    </script>
+    <script type="module" crossorigin src="/F1Dash/assets/index-UODrJlCZ.js"></script>
     <link rel="stylesheet" crossorigin href="/F1Dash/assets/index-xYtr-AKc.css">
   </head>
   <body>
