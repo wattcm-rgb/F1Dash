@@ -1,0 +1,7 @@
+name = "f1dash-openf1"
+main = "src/index.js"
+compatibility_date = "2026-06-01"
+
+# Secrets are NOT stored here — set them with:
+#   npx wrangler secret put OPENF1_USER
+#   npx wrangler secret put OPENF1_PASS
