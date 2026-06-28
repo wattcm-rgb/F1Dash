@@ -5,9 +5,24 @@ export interface OpenF1Session {
   date_start: string;
   date_end: string;
   year: number;
+  meeting_key: number;
   meeting_name: string;
   circuit_short_name: string;
   country_name: string;
+  location?: string;
+}
+
+export function sessionLabel(s: OpenF1Session): string {
+  return s.meeting_name || s.location || s.circuit_short_name || s.country_name || 'Unknown';
+}
+
+export function isLiveSession(s: OpenF1Session): boolean {
+  const now = new Date();
+  return !!s.date_start && new Date(s.date_start) <= now && !!s.date_end && new Date(s.date_end) > now;
+}
+
+export function isPastSession(s: OpenF1Session): boolean {
+  return !!s.date_start && new Date(s.date_start) <= new Date();
 }
 
 export interface OpenF1Driver {

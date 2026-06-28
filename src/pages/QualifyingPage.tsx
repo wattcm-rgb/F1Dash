@@ -1,187 +1,181 @@
-import { useEffect, useState, useCallback, useRef, Fragment } from 'react';
-import { openf1Api } from '../services/openf1Api';
-import type { OpenF1Session, OpenF1Driver, OpenF1Lap, OpenF1Stint, OpenF1Weather } from '../types/openf1';
-import { TYRE_COLOUR, TYRE_LABEL, fmtTime, overallSectorBests, driverLapStats, sectorClasses, currentStint, rankByBestLap, placeholderDriver } from '../utils/timing';
-import WeatherChip from '../components/WeatherChip';
+import { useEffect, useState } from 'react';
+import { jolpicaApi } from '../services/jolpicaApi';
 
-type Tab = 'LAP' | 'SECTOR' | 'TYRE';
-
-const CUT: Record<string, number> = { 'Q1': 15, 'Q2': 10 };
-
-interface Row {
-  pos: number; driver: OpenF1Driver; bestLap: number | null; gap: number | null;
-  s1: number | null; s2: number | null; s3: number | null;
-  s1c: string; s2c: string; s3c: string;
-  compound: string; laps: number; eliminated: boolean; inPit: boolean;
+interface Round {
+  round: number;
+  raceName: string;
+  locality: string;
+  country: string;
+  date: string;
 }
 
-function buildRows(drivers: OpenF1Driver[], laps: OpenF1Lap[], stints: OpenF1Stint[], elim: Set<number>): Row[] {
-  const ob = overallSectorBests(laps);
-  const rows: Row[] = drivers.map(d => {
-    const st = driverLapStats(d.driver_number, laps);
-    const sc = sectorClasses(st, ob);
-    return {
-      pos: 0, driver: d, bestLap: st.bestLap, gap: null,
-      s1: st.s1, s2: st.s2, s3: st.s3, s1c: sc.s1c, s2c: sc.s2c, s3c: sc.s3c,
-      compound: currentStint(d.driver_number, stints)?.compound ?? 'UNKNOWN', laps: st.lapsCount,
-      eliminated: elim.has(d.driver_number), inPit: st.inPit,
-    };
-  });
-  return rankByBestLap(rows);
+interface QualResult {
+  position: number;
+  code: string;
+  team: string;
+  q1: string;
+  q2: string | undefined;
+  q3: string | undefined;
 }
 
-// Empty rows so the table layout is visible outside of a live session.
-const PREVIEW_ROWS: Row[] = Array.from({ length: 10 }, (_, i) => ({
-  pos: i + 1, driver: placeholderDriver(i + 1), bestLap: null, gap: null,
-  s1: null, s2: null, s3: null, s1c: 'white', s2c: 'white', s3c: 'white',
-  compound: 'UNKNOWN', laps: 0, eliminated: false, inPit: false,
-}));
+function fmtGap(pole: string, time: string | undefined): string {
+  if (!time || time === '—') return '—';
+  const toSecs = (t: string) => {
+    const parts = t.split(':');
+    return parts.length === 2 ? Number(parts[0]) * 60 + Number(parts[1]) : Number(t);
+  };
+  const gap = toSecs(time) - toSecs(pole);
+  return gap > 0 ? `+${gap.toFixed(3)}` : '—';
+}
 
-interface Meeting { label: string; sessionKeys: { name: string; key: number }[]; }
+type Tab = 'Q1' | 'Q2' | 'Q3';
 
 export default function QualifyingPage() {
-  const [meetings, setMeetings] = useState<Meeting[]>([]);
-  const [selected, setSelected] = useState<Meeting | null>(null);
-  const [session, setSession] = useState<OpenF1Session | null>(null);
-  const [rows, setRows] = useState<Row[]>([]);
-  const [weather, setWeather] = useState<OpenF1Weather | null>(null);
-  const [tab, setTab] = useState<Tab>('LAP');
+  const [rounds, setRounds] = useState<Round[]>([]);
+  const [selectedRound, setSelectedRound] = useState<number | null>(null);
+  const [results, setResults] = useState<QualResult[]>([]);
+  const [raceName, setRaceName] = useState('');
+  const [tab, setTab] = useState<Tab>('Q3');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [updated, setUpdated] = useState<Date | null>(null);
-  const [isLive, setIsLive] = useState(false);
-  const intervalRef = useRef<number | null>(null);
 
   useEffect(() => {
     async function load() {
       try {
         const year = new Date().getFullYear();
-        const sessions: OpenF1Session[] = await openf1Api.getSessionsByYear(year);
-        const qual = sessions.filter(s => s.session_type === 'Qualifying' || s.session_name?.toLowerCase().includes('qualifying'));
-        const map = new Map<string, Meeting>();
-        for (const s of qual) {
-          if (!map.has(s.meeting_name)) map.set(s.meeting_name, { label: s.meeting_name, sessionKeys: [] });
-          map.get(s.meeting_name)!.sessionKeys.push({ name: s.session_name, key: s.session_key });
+        const data = await jolpicaApi.getRaces(year);
+        // include races up to 2 days from now so a current race weekend shows qualifying
+        const cutoff = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+        const races: Round[] = (data?.MRData?.RaceTable?.Races ?? [])
+          .filter((r: { date: string }) => new Date(r.date) <= cutoff)
+          .map((r: { round: string; raceName: string; Circuit?: { Location?: { locality?: string; country?: string } }; date: string }) => ({
+            round: Number(r.round),
+            raceName: r.raceName,
+            locality: r.Circuit?.Location?.locality ?? '',
+            country: r.Circuit?.Location?.country ?? '',
+            date: r.date,
+          }));
+        setRounds(races);
+        if (races.length) setSelectedRound(races[races.length - 1].round);
+        else setLoading(false);
+      } catch {
+        setError('Failed to load race calendar.');
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  useEffect(() => {
+    if (selectedRound == null) return;
+    setLoading(true);
+    setError(null);
+    setResults([]);
+    async function load() {
+      try {
+        const year = new Date().getFullYear();
+        const data = await jolpicaApi.getQualifyingResults(year, selectedRound!);
+        const race = data?.MRData?.RaceTable?.Races?.[0];
+        if (!race?.QualifyingResults?.length) {
+          setError('No qualifying results available yet for this round.');
+          setLoading(false);
+          return;
         }
-        const opts = Array.from(map.values());
-        setMeetings(opts);
-        if (opts.length) setSelected(opts[opts.length - 1]);
-      } catch { setError('Failed to load sessions.'); setLoading(false); }
+        setRaceName(race.raceName);
+        const mapped: QualResult[] = race.QualifyingResults.map((r: {
+          position: string;
+          Driver?: { code?: string; driverId?: string };
+          Constructor?: { name?: string };
+          Q1?: string; Q2?: string; Q3?: string;
+        }) => ({
+          position: Number(r.position),
+          code: r.Driver?.code ?? (r.Driver?.driverId ?? '???').toUpperCase().slice(0, 3),
+          team: r.Constructor?.name ?? '—',
+          q1: r.Q1 ?? '—',
+          q2: r.Q2,
+          q3: r.Q3,
+        }));
+        setResults(mapped);
+        if (mapped.some(r => r.q3)) setTab('Q3');
+        else if (mapped.some(r => r.q2)) setTab('Q2');
+        else setTab('Q1');
+      } catch {
+        setError('Failed to load qualifying results.');
+      } finally {
+        setLoading(false);
+      }
     }
     load();
-  }, []);
+  }, [selectedRound]);
 
-  const fetchData = useCallback(async (s: OpenF1Session) => {
-    const [laps, stints, drivers, wx] = await Promise.all([
-      openf1Api.getLaps(s.session_key), openf1Api.getStints(s.session_key),
-      openf1Api.getDriversBySession(s.session_key), openf1Api.getWeather(s.session_key),
-    ]);
-    if (!drivers.length) return;
-    const allRows = buildRows(drivers, laps, stints, new Set());
-    const cut = CUT[s.session_name] ?? 0;
-    const elim = new Set(cut > 0 ? allRows.slice(cut).map(r => r.driver.driver_number) : []);
-    setRows(buildRows(drivers, laps, stints, elim));
-    if (wx.length) setWeather(wx[wx.length - 1]);
-    setUpdated(new Date());
-  }, []);
-
-  useEffect(() => {
-    if (!selected) return;
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    setRows([]); setLoading(true); setError(null); setIsLive(false);
-    async function load() {
-      try {
-        const year = new Date().getFullYear();
-        const all: OpenF1Session[] = await openf1Api.getSessionsByYear(year);
-        const sess = all.filter(s => s.meeting_name === selected!.label && (s.session_type === 'Qualifying' || s.session_name?.toLowerCase().includes('qualifying')));
-        if (!sess.length) { setError('No qualifying data found.'); setLoading(false); return; }
-        const s = sess[sess.length - 1];
-        setSession(s);
-        await fetchData(s);
-        const live = s.date_end ? new Date(s.date_end) > new Date() : false;
-        setIsLive(live);
-        if (live) intervalRef.current = window.setInterval(() => fetchData(s), 4000);
-      } catch { setError('Failed to load qualifying data.'); }
-      finally { setLoading(false); }
-    }
-    load();
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [selected, fetchData]);
-
-  const cutLine = CUT[session?.session_name ?? ''] ?? 0;
-  const isPreview = !loading && !error && rows.length === 0;
-  const display = rows.length ? rows : PREVIEW_ROWS;
+  const round = rounds.find(r => r.round === selectedRound);
+  const pole = results[0];
+  const hasQ2 = results.some(r => r.q2);
+  const hasQ3 = results.some(r => r.q3);
+  const timeForTab = (r: QualResult) =>
+    tab === 'Q3' ? r.q3 : tab === 'Q2' ? r.q2 : r.q1;
+  const getPoleTime = () => {
+    if (!pole) return undefined;
+    return tab === 'Q3' ? pole.q3 : tab === 'Q2' ? pole.q2 : pole.q1;
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-      {/* header */}
       <div className="glass" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span className="f1-heading" style={{ fontSize: 17, color: '#f1f5f9' }}>
-              {session ? `${session.meeting_name} · ${session.session_name}` : 'Qualifying'}
-            </span>
-            {isLive && <span style={{ fontSize: 10, background: 'rgba(239,68,68,0.2)', color: '#f87171', border: '1px solid rgba(239,68,68,0.4)', padding: '2px 7px', borderRadius: 4, fontWeight: 700 }}>LIVE</span>}
+          <div className="f1-heading" style={{ fontSize: 17, color: '#f1f5f9' }}>
+            {raceName || round?.raceName || 'Qualifying'}
           </div>
-          {session && <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>{session.circuit_short_name} · {session.country_name}</div>}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          {meetings.length > 0 && (
-            <select
-              style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)', color: '#cbd5e1', fontSize: 12, padding: '5px 10px', borderRadius: 6, cursor: 'pointer' }}
-              value={selected?.label ?? ''}
-              onChange={e => setSelected(meetings.find(m => m.label === e.target.value) ?? null)}
-            >
-              {meetings.map(m => <option key={m.label} value={m.label}>{m.label}</option>)}
-            </select>
-          )}
-          {!error && (
-            <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
-              <WeatherChip label="Air" value={weather ? `${weather.air_temperature.toFixed(1)}°C` : '—'} />
-              <WeatherChip label="Track" value={weather ? `${weather.track_temperature.toFixed(1)}°C` : '—'} />
+          {round && (
+            <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>
+              {round.locality} · {round.country}
             </div>
           )}
-          {updated && <span style={{ fontSize: 11, color: '#334155' }}>{isLive ? 'Live · ' : ''}Updated {updated.toLocaleTimeString()}</span>}
         </div>
+        {rounds.length > 0 && (
+          <select
+            style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)', color: '#cbd5e1', fontSize: 12, padding: '5px 10px', borderRadius: 6, cursor: 'pointer' }}
+            value={selectedRound ?? ''}
+            onChange={e => setSelectedRound(Number(e.target.value))}
+          >
+            {rounds.map(r => (
+              <option key={r.round} value={r.round}>
+                Rd {r.round} · {r.raceName.replace(' Grand Prix', '')}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
-      {/* pole banner */}
-      {!error && (
-        <div style={{ background: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: 8, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+      {pole && (
+        <div style={{ background: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: 8, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: '#a855f7', letterSpacing: '0.1em' }}>POLE POSITION</span>
-          <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 15, color: '#fff' }}>{fmtTime(display[0]?.bestLap ?? null)}</span>
-          <span style={{ fontSize: 12, color: '#94a3b8' }}>{display[0]?.driver.name_acronym} · {display[0]?.driver.team_name}</span>
+          <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 15, color: '#fff' }}>{pole.q3 ?? pole.q1}</span>
+          <span style={{ fontSize: 12, color: '#94a3b8' }}>{pole.code} · {pole.team}</span>
         </div>
       )}
 
-      {/* sector legend */}
-      {!loading && !error && (
-        <div style={{ display: 'flex', gap: 12, fontSize: 11, color: '#475569' }}>
-          <span><span style={{ color: '#c084fc' }}>■</span> Overall best</span>
-          <span><span style={{ color: '#4ade80' }}>■</span> Personal best</span>
-          <span><span style={{ color: '#facc15' }}>■</span> No improvement</span>
-        </div>
-      )}
-
-      {isPreview && (
-        <div style={{ background: 'rgba(148,163,184,0.08)', border: '1px solid rgba(148,163,184,0.18)', borderRadius: 8, padding: '8px 14px', color: '#94a3b8', fontSize: 12 }}>
-          Layout preview — no qualifying data right now. These boxes populate during a session.
-        </div>
-      )}
-
-      {loading && <div style={{ color: '#475569', padding: '60px 0', textAlign: 'center' }}>Loading qualifying data…</div>}
+      {loading && <div style={{ color: '#475569', padding: '60px 0', textAlign: 'center' }}>Loading qualifying results…</div>}
       {error && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: 12, color: '#f87171', fontSize: 13 }}>{error}</div>}
 
-      {!loading && !error && (
-        <div className="glass" style={{ overflow: 'hidden', opacity: isPreview ? 0.55 : 1 }}>
+      {!loading && !error && results.length > 0 && (
+        <div className="glass" style={{ overflow: 'hidden' }}>
           <div style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div className="tab-bar">
-              {(['LAP', 'SECTOR', 'TYRE'] as Tab[]).map(t => (
-                <button key={t} className={`tab-btn${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>{t}</button>
+              {(['Q1', 'Q2', 'Q3'] as Tab[]).map(t => (
+                <button
+                  key={t}
+                  className={`tab-btn${tab === t ? ' active' : ''}`}
+                  onClick={() => setTab(t)}
+                  disabled={(t === 'Q2' && !hasQ2) || (t === 'Q3' && !hasQ3)}
+                  style={{ opacity: ((t === 'Q2' && !hasQ2) || (t === 'Q3' && !hasQ3)) ? 0.3 : 1 }}
+                >
+                  {t}
+                </button>
               ))}
             </div>
-            <span style={{ fontSize: 11, color: '#334155' }}>{isPreview ? 'Preview' : `${rows.length} drivers`}</span>
+            <span style={{ fontSize: 11, color: '#334155' }}>{results.length} drivers</span>
           </div>
 
           <div style={{ overflowX: 'auto' }}>
@@ -189,63 +183,40 @@ export default function QualifyingPage() {
               <thead>
                 <tr>
                   <th style={{ width: 30 }}>Pos</th>
-                  <th style={{ minWidth: 110 }}>Driver</th>
-                  <th>Best Lap</th>
+                  <th style={{ minWidth: 120 }}>Driver</th>
+                  <th>Time</th>
                   <th>Gap</th>
-                  {tab === 'LAP' && <th>Laps</th>}
-                  {tab === 'SECTOR' && <><th>S1</th><th>S2</th><th>S3</th></>}
-                  {tab === 'TYRE' && <><th>Tyre</th><th>Laps</th></>}
                 </tr>
               </thead>
               <tbody>
-                {display.map((row, i) => (
-                  <Fragment key={row.driver.driver_number}>
-                    <tr className={`timing-row${i === 0 ? ' p1' : ''}`} style={{ opacity: row.eliminated ? 0.45 : 1 }}>
-                      <td><span style={{ color: '#475569', fontFamily: 'monospace', fontSize: 12 }}>{row.pos}</span></td>
+                {results.map((r, i) => {
+                  const time = timeForTab(r);
+                  const pt = getPoleTime();
+                  const gap = i === 0 ? null : fmtGap(pt ?? '', time);
+                  const didNotParticipate =
+                    (tab === 'Q3' && !r.q3) || (tab === 'Q2' && !r.q2);
+                  return (
+                    <tr key={r.position} className={`timing-row${i === 0 ? ' p1' : ''}`} style={{ opacity: didNotParticipate ? 0.4 : 1 }}>
+                      <td><span style={{ color: '#475569', fontFamily: 'monospace', fontSize: 12 }}>{r.position}</span></td>
                       <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                          <span style={{ width: 3, height: 20, borderRadius: 2, background: `#${row.driver.team_colour || '444'}`, flexShrink: 0 }} />
-                          <div>
-                            <div style={{ fontWeight: 700, fontSize: 13, color: '#f1f5f9' }}>{row.driver.name_acronym}</div>
-                            <div style={{ fontSize: 10, color: '#475569' }}>{row.driver.team_name}</div>
-                          </div>
-                          {row.inPit && <span className="badge-pit">PIT</span>}
-                          {row.eliminated && <span className="badge-ko">KO</span>}
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ fontWeight: 700, fontSize: 13, color: '#f1f5f9' }}>{r.code}</span>
+                          <span style={{ fontSize: 10, color: '#475569' }}>{r.team}</span>
                         </div>
                       </td>
-                      <td><span style={{ fontFamily: 'monospace', fontWeight: 700, color: i === 0 ? '#c084fc' : '#f1f5f9', fontSize: 13 }}>{fmtTime(row.bestLap)}</span></td>
+                      <td>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: i === 0 ? '#c084fc' : (time ?? '—') === '—' ? '#334155' : '#f1f5f9' }}>
+                          {time ?? '—'}
+                        </span>
+                      </td>
                       <td>
                         {i === 0
                           ? <span style={{ fontSize: 10, fontWeight: 700, color: '#a855f7' }}>POLE</span>
-                          : <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#94a3b8' }}>{row.gap != null ? `+${row.gap.toFixed(3)}` : '—'}</span>}
+                          : <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#94a3b8' }}>{gap ?? '—'}</span>}
                       </td>
-                      {tab === 'LAP' && <td><span style={{ color: '#475569', fontSize: 12 }}>{row.laps}</span></td>}
-                      {tab === 'SECTOR' && (
-                        <>
-                          <td><span className={`sector-pill ${row.s1c}`}>{row.s1 != null ? row.s1.toFixed(3) : '—'}</span></td>
-                          <td><span className={`sector-pill ${row.s2c}`}>{row.s2 != null ? row.s2.toFixed(3) : '—'}</span></td>
-                          <td><span className={`sector-pill ${row.s3c}`}>{row.s3 != null ? row.s3.toFixed(3) : '—'}</span></td>
-                        </>
-                      )}
-                      {tab === 'TYRE' && (
-                        <>
-                          <td>
-                            <span style={{ fontWeight: 700, color: TYRE_COLOUR[row.compound] ?? '#64748b' }}>{TYRE_LABEL[row.compound]}</span>
-                            <span style={{ fontSize: 10, color: '#475569', marginLeft: 5 }}>{row.compound}</span>
-                          </td>
-                          <td><span style={{ color: '#475569', fontSize: 12 }}>{row.laps}</span></td>
-                        </>
-                      )}
                     </tr>
-                    {cutLine > 0 && i === cutLine - 1 && (
-                      <tr>
-                        <td colSpan={10} style={{ padding: '2px 12px', background: 'rgba(239,68,68,0.08)', borderTop: '1px solid rgba(239,68,68,0.3)', borderBottom: '1px solid rgba(239,68,68,0.3)' }}>
-                          <span style={{ fontSize: 10, color: '#f87171', fontWeight: 700, letterSpacing: '0.08em' }}>── ELIMINATED BELOW ──</span>
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

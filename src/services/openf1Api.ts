@@ -1,9 +1,7 @@
-// Self-hosted OpenF1 API running on VPS.
-// NOTE: the site is served over HTTPS (GitHub Pages), so an http:// endpoint
-// here is blocked by the browser as mixed content. Point VITE_OPENF1_BASE_URL
-// at an https:// origin (TLS on the VPS, or a same-origin proxy) in production.
+// Public OpenF1 API is the default so the GitHub Pages (HTTPS) build works without
+// mixed-content issues. Override with VITE_OPENF1_BASE_URL once the VPS has TLS.
 const OPENF1_BASE_URL =
-  import.meta.env.VITE_OPENF1_BASE_URL ?? 'http://167.233.76.227:8000/v1';
+  import.meta.env.VITE_OPENF1_BASE_URL ?? 'https://api.openf1.org/v1';
 
 export const openf1Api = {
   async getSessions() {
@@ -116,13 +114,42 @@ export const openf1Api = {
     }
   },
 
+  async getLocation(sessionKey: number, since?: string) {
+    try {
+      let url = `${OPENF1_BASE_URL}/location?session_key=${sessionKey}&limit=10000`;
+      if (since) url += `&date>${since}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    } catch (error) {
+      console.error('Failed to fetch location:', error);
+      return [];
+    }
+  },
+
+  // Position trace for a single driver over a time window — used to build the
+  // static track outline in advance from an earlier session of the same meeting.
+  async getLocationRange(sessionKey: number, driverNumber: number, dateGt: string, dateLt: string) {
+    try {
+      const url = `${OPENF1_BASE_URL}/location?session_key=${sessionKey}&driver_number=${driverNumber}&date>${dateGt}&date<${dateLt}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    } catch (error) {
+      console.error('Failed to fetch location range:', error);
+      return [];
+    }
+  },
+
   async getLatestSession(type: 'Practice' | 'Qualifying' | 'Race') {
     try {
       const res = await fetch(`${OPENF1_BASE_URL}/sessions?session_type=${type}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const sessions = await res.json();
       if (!sessions.length) return null;
-      return sessions[sessions.length - 1];
+      const now = new Date();
+      const past = sessions.filter((s: { date_start?: string }) => s.date_start && new Date(s.date_start) <= now);
+      return past.length ? past[past.length - 1] : null;
     } catch (error) {
       console.error('Failed to fetch latest session:', error);
       return null;
