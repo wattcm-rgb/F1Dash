@@ -27,6 +27,7 @@ const TTL = {
   weather: 60,
   drivers: 300,
   sessions: 300,
+  car_data: 3600,
 };
 const DEFAULT_TTL = 8;
 

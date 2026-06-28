@@ -67,6 +67,9 @@ export const openf1Api = {
   getLocationRange: (sessionKey: number, driverNumber: number, dateGt: string, dateLt: string) =>
     req(`/location?session_key=${sessionKey}&driver_number=${driverNumber}&date>${dateGt}&date<${dateLt}`, []),
 
+  getCarData: (sessionKey: number, driverNumber: number, dateGt: string, dateLt: string) =>
+    req(`/car_data?session_key=${sessionKey}&driver_number=${driverNumber}&date>${dateGt}&date<${dateLt}`, []),
+
   async getLatestSession(type: 'Practice' | 'Qualifying' | 'Race') {
     const sessions = await req<OpenF1Session[]>(`/sessions?session_type=${type}`, []);
     if (!sessions.length) return null;
