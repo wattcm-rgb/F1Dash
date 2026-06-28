@@ -1,22 +1,29 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
   <head>
-    <meta charset="utf-8">
-    <title>F1 Dashboard</title>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/F1Dash/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>f1-dash</title>
     <script>
       // Single Page Apps for GitHub Pages — https://github.com/rafgraph/spa-github-pages
-      // Encodes the current path into the query string so the index.html can restore it.
-      var pathSegmentsToKeep = 1; // keep /F1Dash as the base segment
-
-      var l = window.location;
-      l.replace(
-        l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
-        l.pathname.split('/').slice(0, 1 + pathSegmentsToKeep).join('/') + '/?/' +
-        l.pathname.slice(1).split('/').slice(pathSegmentsToKeep).join('/').replace(/&/g, '~and~') +
-        (l.search ? '&' + l.search.slice(1).replace(/&/g, '~and~') : '') +
-        l.hash
-      );
+      // Restores the path that was encoded into the query string by 404.html.
+      (function(l) {
+        if (l.search[1] === '/') {
+          var decoded = l.search.slice(1).split('&').map(function(s) {
+            return s.replace(/~and~/g, '&');
+          });
+          window.history.replaceState(null, null,
+            l.pathname.slice(0, -1) + decoded[0] +
+            (decoded[1] ? '&' + decoded[1] : '') + l.hash
+          );
+        }
+      }(window.location));
     </script>
+    <script type="module" crossorigin src="/F1Dash/assets/index-CVCEURBl.js"></script>
+    <link rel="stylesheet" crossorigin href="/F1Dash/assets/index-DFbXpp4d.css">
   </head>
-  <body></body>
+  <body>
+    <div id="root"></div>
+  </body>
 </html>
