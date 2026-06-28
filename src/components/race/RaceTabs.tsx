@@ -9,8 +9,8 @@ import BattleTab from './BattleTab';
 import TrackMapTab from './TrackMapTab';
 import TelemetryTab from './TelemetryTab';
 
-type Tab = 'LEADERBOARD' | 'RACE CONTROL' | 'PIT STOPS' | 'BATTLE' | 'TRACK MAP' | 'TELEMETRY';
-const TABS: Tab[] = ['LEADERBOARD', 'RACE CONTROL', 'PIT STOPS', 'BATTLE', 'TRACK MAP', 'TELEMETRY'];
+type Tab = 'LEADERBOARD' | 'PIT STOPS' | 'BATTLE' | 'TELEMETRY' | 'RACE CONTROL' | 'TRACK MAP';
+const TABS: Tab[] = ['LEADERBOARD', 'PIT STOPS', 'BATTLE', 'TELEMETRY', 'RACE CONTROL', 'TRACK MAP'];
 
 interface Props {
   mode: 'live' | 'historical';

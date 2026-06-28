@@ -21,6 +21,178 @@ function avgPace(dn: number, laps: OpenF1Lap[], n = 5): number | null {
   return dl.reduce((s, l) => s + l.lap_duration!, 0) / dl.length;
 }
 
+interface OvertakeForecast {
+  chaser: OpenF1Driver;
+  leader: OpenF1Driver;
+  currentGap: number;       // seconds, positive
+  paceDiff: number;         // seconds per lap the chaser is faster (positive = chaser gaining)
+  lapsToOvertake: number | null;
+}
+
+function computeForecast(
+  dA: OpenF1Driver, dB: OpenF1Driver,
+  posA: number, posB: number,
+  laps: OpenF1Lap[],
+  gapData: { lap: number; gap: number }[],
+): OvertakeForecast | null {
+  if (!gapData.length) return null;
+  const lastGap = gapData[gapData.length - 1].gap; // positive = A ahead of B
+
+  const paceA = avgPace(dA.driver_number, laps);
+  const paceB = avgPace(dB.driver_number, laps);
+  if (paceA == null || paceB == null) return null;
+
+  // Determine who's behind by position (lower pos number = ahead)
+  const aAhead = posA < posB;
+  const chaser = aAhead ? dB : dA;
+  const leader = aAhead ? dA : dB;
+  const chaserPace = aAhead ? paceB : paceA;
+  const leaderPace = aAhead ? paceA : paceB;
+
+  // Current gap from chaser's perspective (always positive = gap to close)
+  const currentGap = Math.abs(lastGap);
+
+  // paceDiff > 0 means chaser is gaining per lap
+  const paceDiff = leaderPace - chaserPace;
+
+  const lapsToOvertake = paceDiff > 0.05 ? currentGap / paceDiff : null;
+
+  return { chaser, leader, currentGap, paceDiff, lapsToOvertake };
+}
+
+function OvertakeBanner({ forecast }: { forecast: OvertakeForecast }) {
+  const { chaser, leader, currentGap, paceDiff, lapsToOvertake } = forecast;
+  const chaserColor = `#${chaser.team_colour || '888'}`;
+  const leaderColor = `#${leader.team_colour || '888'}`;
+  const gaining = paceDiff > 0.05;
+
+  const lapsRounded = lapsToOvertake != null ? Math.ceil(lapsToOvertake) : null;
+  const inRange = lapsRounded != null && lapsRounded <= 20;
+
+  return (
+    <div style={{
+      position: 'relative', overflow: 'hidden', borderRadius: 10,
+      background: 'linear-gradient(135deg, #0a0a14 0%, #0f0f1e 60%, #0a0a14 100%)',
+      border: `1px solid ${inRange ? 'rgba(251,191,36,0.4)' : 'rgba(255,255,255,0.08)'}`,
+      padding: '0',
+    }}>
+      {/* Header bar */}
+      <div style={{
+        background: inRange ? 'rgba(251,191,36,0.12)' : 'rgba(255,255,255,0.04)',
+        borderBottom: `1px solid ${inRange ? 'rgba(251,191,36,0.25)' : 'rgba(255,255,255,0.06)'}`,
+        padding: '6px 16px',
+        display: 'flex', alignItems: 'center', gap: 8,
+      }}>
+        <span style={{ fontSize: 10, fontWeight: 800, color: inRange ? '#fbbf24' : '#475569', letterSpacing: '0.12em' }}>
+          BATTLE FORECAST
+        </span>
+        {gaining && (
+          <span style={{ fontSize: 9, color: '#475569', marginLeft: 'auto' }}>
+            powered by pace delta
+          </span>
+        )}
+      </div>
+
+      {/* Main content */}
+      <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', gap: 0 }}>
+
+        {/* Chaser (left) */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 4, height: 20, borderRadius: 2, background: chaserColor, flexShrink: 0 }} />
+            <span style={{ fontSize: 15, fontWeight: 800, color: '#f1f5f9', letterSpacing: '0.04em' }}>{chaser.name_acronym}</span>
+          </div>
+          <div style={{ fontSize: 10, color: '#475569', marginLeft: 10 }}>CHASING {leader.name_acronym}</div>
+        </div>
+
+        {/* Central forecast */}
+        <div style={{ flex: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '0 12px' }}>
+          {gaining && lapsRounded != null ? (
+            <>
+              <div style={{
+                background: inRange ? 'rgba(251,191,36,0.18)' : 'rgba(100,116,139,0.15)',
+                border: `1px solid ${inRange ? 'rgba(251,191,36,0.5)' : 'rgba(100,116,139,0.3)'}`,
+                borderRadius: 6, padding: '3px 14px',
+                fontSize: 10, fontWeight: 800,
+                color: inRange ? '#fbbf24' : '#64748b',
+                letterSpacing: '0.1em',
+              }}>
+                {inRange ? 'STRIKING DISTANCE' : 'MONITORING PACE'}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>IN</span>
+                <span style={{ fontSize: 36, fontWeight: 900, color: inRange ? '#fbbf24' : '#94a3b8', fontFamily: 'monospace', lineHeight: 1 }}>{lapsRounded}</span>
+                <span style={{ fontSize: 13, color: '#64748b', fontWeight: 600 }}>LAP{lapsRounded !== 1 ? 'S' : ''}</span>
+              </div>
+              {/* Pace bar */}
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 3, marginTop: 4 }}>
+                <div style={{ fontSize: 9, color: '#334155', textAlign: 'center', letterSpacing: '0.08em' }}>
+                  OVERTAKE DIFFICULTY
+                </div>
+                <div style={{ height: 6, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%',
+                    width: `${Math.min(100, Math.max(5, (1 - Math.min(lapsRounded, 20) / 20) * 100))}%`,
+                    borderRadius: 3,
+                    background: inRange
+                      ? 'linear-gradient(90deg, #22c55e, #fbbf24)'
+                      : 'linear-gradient(90deg, #475569, #334155)',
+                    transition: 'width 0.4s ease',
+                  }} />
+                </div>
+              </div>
+            </>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+              <div style={{
+                background: 'rgba(100,116,139,0.12)',
+                border: '1px solid rgba(100,116,139,0.25)',
+                borderRadius: 6, padding: '4px 16px',
+                fontSize: 10, fontWeight: 800,
+                color: '#475569', letterSpacing: '0.1em',
+              }}>
+                {paceDiff < -0.05 ? 'PULLING AWAY' : 'SIMILAR PACE'}
+              </div>
+              <div style={{ fontSize: 11, color: '#334155' }}>
+                {paceDiff < -0.05 ? `${leader.name_acronym} +${Math.abs(paceDiff).toFixed(3)}s/lap` : 'No significant pace delta'}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Leader (right) */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-end' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexDirection: 'row-reverse' }}>
+            <span style={{ width: 4, height: 20, borderRadius: 2, background: leaderColor, flexShrink: 0 }} />
+            <span style={{ fontSize: 15, fontWeight: 800, color: '#f1f5f9', letterSpacing: '0.04em' }}>{leader.name_acronym}</span>
+          </div>
+          <div style={{ fontSize: 10, color: '#475569', marginRight: 10 }}>{currentGap.toFixed(3)}s AHEAD</div>
+        </div>
+      </div>
+
+      {/* Footer stats */}
+      <div style={{
+        borderTop: '1px solid rgba(255,255,255,0.05)',
+        padding: '6px 16px',
+        display: 'flex', gap: 24,
+      }}>
+        <div>
+          <span style={{ fontSize: 9, color: '#334155', marginRight: 6 }}>PACE DELTA</span>
+          <span style={{ fontSize: 11, fontFamily: 'monospace', color: gaining ? '#4ade80' : '#f87171', fontWeight: 700 }}>
+            {gaining ? '+' : ''}{paceDiff.toFixed(3)}s/lap
+          </span>
+        </div>
+        <div>
+          <span style={{ fontSize: 9, color: '#334155', marginRight: 6 }}>CURRENT GAP</span>
+          <span style={{ fontSize: 11, fontFamily: 'monospace', color: '#94a3b8', fontWeight: 700 }}>
+            {currentGap.toFixed(3)}s
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function BattleTab({ drivers, laps, stints, pitStops, positions }: Props) {
   const [a, setA] = useState<number | null>(null);
   const [b, setB] = useState<number | null>(null);
@@ -45,6 +217,10 @@ export default function BattleTab({ drivers, laps, stints, pitStops, positions }
     }
   }
 
+  const posA = a != null ? (latestPosition.get(a) ?? 99) : 99;
+  const posB = b != null ? (latestPosition.get(b) ?? 99) : 99;
+  const forecast = dA && dB ? computeForecast(dA, dB, posA, posB, laps, gapData) : null;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
@@ -67,7 +243,7 @@ export default function BattleTab({ drivers, laps, stints, pitStops, positions }
                 <option value="">— Select —</option>
                 {ordered.map(r => (
                   <option key={r.driver_number} value={r.driver_number}>
-                    {pos != null && r.driver_number === sel ? '' : ''}{r.name_acronym} ({r.team_name})
+                    {r.name_acronym} ({r.team_name})
                   </option>
                 ))}
               </select>
@@ -87,6 +263,11 @@ export default function BattleTab({ drivers, laps, stints, pitStops, positions }
           );
         })}
       </div>
+
+      {/* Overtake forecast banner */}
+      {forecast && (
+        <OvertakeBanner forecast={forecast} />
+      )}
 
       {dA && dB && gapData.length > 0 ? (
         <div className="glass" style={{ padding: 16 }}>
