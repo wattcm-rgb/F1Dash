@@ -4,15 +4,16 @@ import qualifyingIcon from '../icons/qualifying_icon.png';
 import raceIcon from '../icons/race_icon.png';
 import calendarIcon from '../icons/calendar_icon.png';
 
-interface NavItem { to: string; label: string; icon?: string; home?: boolean; news?: boolean; live?: boolean; }
+interface NavItem { to: string; label: string; icon?: string; home?: boolean; news?: boolean; live?: boolean; standings?: boolean; }
 
 const NAV: NavItem[] = [
-  { to: '/',           label: 'Home',       home: true },
-  { to: '/live',       label: 'Live',       live: true },
-  { to: '/calendar',   label: 'Calendar',   icon: calendarIcon },
-  { to: '/qualifying', label: 'Qualifying', icon: qualifyingIcon },
-  { to: '/race',       label: 'Race',       icon: raceIcon },
-  { to: '/news',       label: 'News',       news: true },
+  { to: '/',            label: 'Home',       home: true },
+  { to: '/live',        label: 'Live',       live: true },
+  { to: '/standings',   label: 'Standings',  standings: true },
+  { to: '/calendar',    label: 'Calendar',   icon: calendarIcon },
+  { to: '/qualifying',  label: 'Qualifying', icon: qualifyingIcon },
+  { to: '/race',        label: 'Race',       icon: raceIcon },
+  { to: '/news',        label: 'News',       news: true },
 ];
 
 function NewsIcon({ size, active }: { size: number; active: boolean }) {
@@ -40,6 +41,25 @@ function LiveIcon({ size, active }: { size: number; active: boolean }) {
       <path d="M15.5 8.5a5 5 0 0 1 0 7" />
       <path d="M5 5a10 10 0 0 0 0 14" />
       <path d="M19 5a10 10 0 0 1 0 14" />
+    </svg>
+  );
+}
+
+function PodiumIcon({ size, active }: { size: number; active: boolean }) {
+  return (
+    <svg
+      width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+      style={{ filter: active ? 'drop-shadow(0 0 4px rgba(168,85,247,0.6))' : 'none' }}
+    >
+      {/* podium steps: 2nd (left) | 1st (centre) | 3rd (right) */}
+      <path d="M2 22 V11 H8 V5 H16 V15 H22 V22 Z" />
+      <text x="11.5" y="10" textAnchor="middle" fontSize="4" fontWeight="700"
+        stroke="none" fill="currentColor" fontFamily="sans-serif">1</text>
+      <text x="5"    y="16" textAnchor="middle" fontSize="4" fontWeight="700"
+        stroke="none" fill="currentColor" fontFamily="sans-serif">2</text>
+      <text x="19"   y="20" textAnchor="middle" fontSize="4" fontWeight="700"
+        stroke="none" fill="currentColor" fontFamily="sans-serif">3</text>
     </svg>
   );
 }
@@ -103,6 +123,8 @@ export default function Layout() {
                     ? <HomeIcon size={24} active={active} />
                     : item.live
                     ? <LiveIcon size={24} active={active} />
+                    : item.standings
+                    ? <PodiumIcon size={24} active={active} />
                     : item.news
                     ? <NewsIcon size={24} active={active} />
                     : <img src={item.icon} alt="" style={{ width: 24, height: 24, opacity: active ? 1 : 0.75, filter: active ? 'drop-shadow(0 0 4px rgba(168,85,247,0.6))' : 'none' }} />}
@@ -139,6 +161,8 @@ export default function Layout() {
                 ? <HomeIcon size={28} active={active} />
                 : item.live
                 ? <LiveIcon size={28} active={active} />
+                : item.standings
+                ? <PodiumIcon size={28} active={active} />
                 : item.news
                 ? <NewsIcon size={28} active={active} />
                 : <img src={item.icon} alt="" />}

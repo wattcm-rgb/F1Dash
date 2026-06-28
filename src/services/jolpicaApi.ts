@@ -26,6 +26,11 @@ export const jolpicaApi = {
     return res.json();
   },
 
+  async getConstructorStandings(season: number) {
+    const res = await fetch(`${BASE_URL}/${season}/constructorStandings.json`);
+    return res.json();
+  },
+
   async getRaceResults(season: number, round: number) {
     const res = await fetch(`${BASE_URL}/${season}/${round}/results.json`);
     return res.json();

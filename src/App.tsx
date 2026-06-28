@@ -5,6 +5,7 @@ import QualifyingPage from './pages/QualifyingPage';
 import RacePage from './pages/RacePage';
 import NewsPage from './pages/NewsPage';
 import LivePage from './pages/LivePage';
+import StandingsPage from './pages/StandingsPage';
 import Layout from './components/Layout';
 
 export default function App() {
@@ -18,6 +19,7 @@ export default function App() {
           <Route path="/race" element={<RacePage />} />
           <Route path="/news" element={<NewsPage />} />
           <Route path="/live" element={<LivePage />} />
+          <Route path="/standings" element={<StandingsPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
