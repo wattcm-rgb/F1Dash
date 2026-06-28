@@ -11,10 +11,10 @@ interface NavItem { to: string; label: string; icon?: string; home?: boolean; ne
 const NAV: NavItem[] = [
   { to: '/',            label: 'Home',       home: true },
   { to: '/live',        label: 'Live',       live: true },
+  { to: '/race',        label: 'Race',       icon: raceIcon },
+  { to: '/qualifying',  label: 'Qualifying', icon: qualifyingIcon },
   { to: '/standings',   label: 'Standings',  standings: true },
   { to: '/calendar',    label: 'Calendar',   icon: calendarIcon },
-  { to: '/qualifying',  label: 'Qualifying', icon: qualifyingIcon },
-  { to: '/race',        label: 'Race',       icon: raceIcon },
   { to: '/news',        label: 'News',       news: true },
 ];
 
