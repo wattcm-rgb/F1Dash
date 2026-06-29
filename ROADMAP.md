@@ -391,7 +391,13 @@ This is one of the most-shared F1 visualisations after every race. It shows the 
 
 ## Phase 4 — Infrastructure
 
-### 4.1 Delta fetching for live polling
+> **Important distinction before starting:** there are two separate problems here that are easy to conflate.
+> - **Payload size** (how many bytes/rows come back per request) → fixed by delta fetching (4.1).
+> - **Request count** (how many calls hit the API per minute) → fixed by polling-budget changes (4.2).
+>
+> Delta fetching does **not** reduce request count, so it does **not** lower rate-limit exposure. If the goal is "don't get throttled," 4.2 is the section that matters, not 4.1. See "Rate limits & polling budget" below for the full reasoning.
+
+### 4.1 Delta fetching for live polling (reduces payload size)
 
 **File:** `src/pages/LivePage.tsx`
 
@@ -406,9 +412,64 @@ openf1Api.getLapsSince(sessionKey, since: string): Promise<OpenF1Lap[]>
 
 Merge new rows into existing state rather than replacing it. This dramatically reduces bandwidth and parse time in the second half of a race.
 
+**Note:** this keeps the request *count* identical — it only shrinks each response. It solves bandwidth and parse cost, not rate limits.
+
 ---
 
-### 4.2 Shared `useQualifyingSession` hook
+### 4.2 Reduce request count for live polling (reduces rate-limit exposure)
+
+**File:** `src/pages/LivePage.tsx`, `src/services/openf1Api.ts`
+
+This is the section that actually protects against throttling. See the rate-limit analysis below for the numbers. Four changes, in order of leverage:
+
+1. **Set the OpenF1 token.** `openf1Api.ts` already reads `VITE_OPENF1_TOKEN`. Authenticating raises the OpenF1 rate ceiling and is the single highest-leverage, lowest-effort change. Document the env var in the README and `.env.example`.
+
+2. **Slow the main poll interval.** It is currently `4_000` ms (`pollRef` in `LivePage.tsx`). Live timing data barely changes between 4s and 8s visually. Moving to `8_000`–`10_000` ms roughly halves request rate with no perceptible UX loss.
+
+3. **Stagger endpoints by how fast they change.** `fetchAll` currently fires all 9 requests on the same 4s cadence. Split them:
+   - **Fast (positions, intervals, location)** — keep on the short interval.
+   - **Slow (weather, stints, pit stops, race control, drivers)** — move to a separate 20–30s interval.
+   This alone can cut the request count by ~50% because 5 of the 9 endpoints rarely change.
+
+4. **Back off on HTTP 429.** Tied to Phase 0.2 — `openf1Api` currently swallows errors silently, so a rate-limit response renders as a blank screen with no recovery. Add exponential backoff (e.g. 2s → 4s → 8s → 16s) and pause polling while throttled, then resume. This makes the app degrade gracefully instead of appearing broken.
+
+---
+
+### Rate limits & polling budget (analysis)
+
+**The architecture is the key fact:** F1Dash is a static SPA (GitHub Pages). Every API call is made **directly from the user's browser**, not from a shared backend. Therefore rate limits are enforced **per client IP** — each user spends their own budget, not a pooled one.
+
+**Who is actually at risk:**
+
+| Scenario | Risk |
+|---|---|
+| Several users in different locations (home / office / cellular) | **Low** — separate IPs, separate budgets, they do not pool. |
+| Several users behind the **same network/router** (one office, one house) | **Real** — they share one public IP and therefore one budget. |
+| A **single user sitting on the Live page** during a race | Already heavy — see below. |
+
+**The cost is concentrated entirely in the Live page.** Historical Race / Qualifying / Standings / Calendar pages fire one burst of ~7 requests on load and then go quiet — dozens of users browsing history is effectively free.
+
+**Live page request math (from current code):**
+- `fetchAll` runs every `4_000` ms and fires **9 requests** (`getLaps`, `getStints`, `getDriversBySession`, `getPitStops`, `getIntervals`, `getRaceControlMessages`, `getWeather`, `getPositions`, `getLocation`).
+- `detectSession` runs every `30_000` ms (1 request).
+
+```
+9 requests / 4s ≈ 2.25 req/s ≈ ~135 req/min ≈ ~8,100 requests/hour
+```
+
+…from **one browser** on the Live page during a race. Three such users behind the same IP ≈ ~24,000 req/hr to OpenF1 — that is the realistic throttling scenario.
+
+**Provider differences:**
+- **Jolpica/Ergast** (historical Qualifying, Standings, Calendar) has the **stricter, well-documented** limits (low hundreds of requests/hour anonymous, low burst ceiling). Only fires on load, so normal browsing is safe; rapid round-clicking could trip it.
+- **OpenF1** (Live, Race) is looser but its anonymous ceiling is less clearly published and has changed across seasons. The `VITE_OPENF1_TOKEN` path exists specifically to raise it.
+
+> ⚠️ Verify the current published limits on both providers' docs before relying on any specific figure — these get revised between seasons. The numbers above are derived from this codebase's behaviour, not from a guaranteed provider quota.
+
+**Fix priority** (all detailed in 4.2 above): (1) OpenF1 token → (2) slower poll interval → (3) staggered endpoints → (4) 429 backoff.
+
+---
+
+### 4.3 Shared `useQualifyingSession` hook
 
 **File:** `src/hooks/useQualifyingSession.ts` (new)
 
@@ -416,7 +477,7 @@ Extract the live qualifying polling logic so `QualifyingPage` and `SprintQualify
 
 ---
 
-### 4.3 Tests for new features
+### 4.4 Tests for new features
 
 Write tests alongside each new feature in this order:
 
@@ -445,7 +506,7 @@ Phase 2.3 (nav)        → Add routes and nav items
 Phase 3.1–3.2 (sector tabs) → Add SectorLeaderboardTab to RaceTabs
 Phase 3.3 (tyre deg)   → Add to Leaderboard in live mode
 Phase 3.4 (fan chart)  → Position chart tab
-Phase 4 (infra)        → Delta fetching, shared hook cleanup
+Phase 4 (infra)        → Request-count reduction (4.2) protects live rate limits; delta fetching (4.1) + shared hook cleanup
 ```
 
 ---
