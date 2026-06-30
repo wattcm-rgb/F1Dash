@@ -24,6 +24,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Gate the deploy on the test suite: if tests fail, the job stops here and
+      # the Build/Deploy steps below never run, so a regression can't reach the
+      # live site.
+      - name: Run tests
+        run: npm run test:run
+
       - name: Build
         run: npm run build
 
