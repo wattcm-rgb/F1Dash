@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 
 vi.mock('../../services/openf1Api', () => ({
+  isRateLimited: vi.fn(() => false),
   openf1Api: {
     getLatestSession:        vi.fn(),
     getLaps:                 vi.fn(),
@@ -9,9 +10,12 @@ vi.mock('../../services/openf1Api', () => ({
     getDriversBySession:     vi.fn(),
     getPitStops:             vi.fn(),
     getIntervals:            vi.fn(),
+    getIntervalsSince:       vi.fn(),
     getRaceControlMessages:  vi.fn(),
     getWeather:              vi.fn(),
     getPositions:            vi.fn(),
+    getPositionsSince:       vi.fn(),
+    getLapsSince:            vi.fn(),
     getLocation:             vi.fn(),
   },
 }));
@@ -55,13 +59,16 @@ beforeEach(() => {
   vi.clearAllMocks();
   // Default: all data-fetch methods resolve immediately with empty arrays.
   vi.mocked(openf1Api.getLaps).mockResolvedValue([]);
+  vi.mocked(openf1Api.getLapsSince).mockResolvedValue([]);
   vi.mocked(openf1Api.getStints).mockResolvedValue([]);
   vi.mocked(openf1Api.getDriversBySession).mockResolvedValue([]);
   vi.mocked(openf1Api.getPitStops).mockResolvedValue([]);
   vi.mocked(openf1Api.getIntervals).mockResolvedValue([]);
+  vi.mocked(openf1Api.getIntervalsSince).mockResolvedValue([]);
   vi.mocked(openf1Api.getRaceControlMessages).mockResolvedValue([]);
   vi.mocked(openf1Api.getWeather).mockResolvedValue([]);
   vi.mocked(openf1Api.getPositions).mockResolvedValue([]);
+  vi.mocked(openf1Api.getPositionsSince).mockResolvedValue([]);
   vi.mocked(openf1Api.getLocation).mockResolvedValue([]);
 });
 

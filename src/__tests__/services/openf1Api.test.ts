@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { openf1Api } from '../../services/openf1Api';
+import { openf1Api, isRateLimited } from '../../services/openf1Api';
 import type { OpenF1Session } from '../../types/openf1';
 
 const BASE = 'https://api.openf1.org/v1';
@@ -290,6 +290,81 @@ describe('getCurrentSession()', () => {
     mockOk([]);
     await openf1Api.getCurrentSession();
     expect(calledUrl()).toBe(`${BASE}/sessions?session_key=latest`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Delta-fetch URL construction (Phase 4.1)
+// ---------------------------------------------------------------------------
+
+describe('Delta-fetch URL construction', () => {
+  beforeEach(() => mockOk([]));
+
+  it('getLapsSince(9999, since) → /laps?session_key=9999&date>since', async () => {
+    await openf1Api.getLapsSince(9999, '2024-03-02T14:00:00');
+    expect(calledUrl()).toBe(`${BASE}/laps?session_key=9999&date>2024-03-02T14:00:00`);
+  });
+
+  it('getPositionsSince(9999, since) → /position?session_key=9999&date>since', async () => {
+    await openf1Api.getPositionsSince(9999, '2024-03-02T14:00:00');
+    expect(calledUrl()).toBe(`${BASE}/position?session_key=9999&date>2024-03-02T14:00:00`);
+  });
+
+  it('getIntervalsSince(9999, since) → /intervals?session_key=9999&date>since', async () => {
+    await openf1Api.getIntervalsSince(9999, '2024-03-02T14:00:00');
+    expect(calledUrl()).toBe(`${BASE}/intervals?session_key=9999&date>2024-03-02T14:00:00`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 429 rate-limit backoff (Phase 4.2)
+// ---------------------------------------------------------------------------
+
+describe('429 rate-limit backoff', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ now: Date.now() });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.resetModules();
+  });
+
+  it('returns the fallback and does not throw when the API returns 429', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 429 });
+    const result = await openf1Api.getSessions();
+    expect(result).toEqual([]);
+  });
+
+  it('isRateLimited() returns false before any 429 on a fresh module', async () => {
+    vi.resetModules();
+    const { isRateLimited: freshIsRateLimited } = await import('../../services/openf1Api');
+    expect(freshIsRateLimited()).toBe(false);
+  });
+
+  it('suppresses subsequent safe requests for 30 s after a 429', async () => {
+    // Trigger the 429 to set rateLimitedUntil
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 429 });
+    await openf1Api.getSessions();
+
+    // Advance time but stay inside the 30-s window
+    vi.advanceTimersByTime(15_000);
+    mockFetch.mockClear();
+    await openf1Api.getLaps(9999);
+    // Fetch should NOT have been called — module is rate-limited
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('resumes requests after the 30-s backoff window expires', async () => {
+    // Trigger rate limit
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 429 });
+    await openf1Api.getSessions();
+
+    // Advance past the 30-s window
+    vi.advanceTimersByTime(31_000);
+    mockOk([]);
+    await openf1Api.getLaps(9999);
+    expect(mockFetch).toHaveBeenCalledOnce();
   });
 });
 
