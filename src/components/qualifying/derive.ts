@@ -52,12 +52,20 @@ export function detectSegments(laps: QualLap[]): [QualLap[], QualLap[], QualLap[
     (a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime(),
   );
 
-  // Find indices where a gap of >5 min exists between consecutive laps.
-  const breakPoints: number[] = [];
+  // Find all gaps > 5 min between consecutive laps.
+  const allBreaks: { index: number; gap: number }[] = [];
   for (let i = 1; i < sorted.length; i++) {
     const gap = new Date(sorted[i].date_start).getTime() - new Date(sorted[i - 1].date_start).getTime();
-    if (gap > 5 * 60 * 1000) breakPoints.push(i);
+    if (gap > 5 * 60 * 1000) allBreaks.push({ index: i, gap });
   }
+
+  // Use the two LARGEST gaps as segment boundaries — more robust than the first two
+  // when an in-session red flag causes an unexpected > 5 min stoppage within a segment.
+  const breakPoints = allBreaks
+    .sort((a, b) => b.gap - a.gap)
+    .slice(0, 2)
+    .sort((a, b) => a.index - b.index)
+    .map(b => b.index);
 
   if (breakPoints.length === 0) return [sorted, [], []];
   if (breakPoints.length === 1) return [sorted.slice(0, breakPoints[0]), sorted.slice(breakPoints[0]), []];

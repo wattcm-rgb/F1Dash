@@ -15,7 +15,7 @@ const AUTH_HEADERS: HeadersInit | undefined = OPENF1_TOKEN
   ? { Authorization: `Bearer ${OPENF1_TOKEN}` }
   : undefined;
 
-// Single fetch helper so auth + error handling live in one place.
+// Safe helper — on any error logs and returns the fallback. Use for data polling.
 async function req<T>(path: string, fallback: T): Promise<T> {
   try {
     const res = await fetch(`${OPENF1_BASE_URL}${path}`, AUTH_HEADERS ? { headers: AUTH_HEADERS } : undefined);
@@ -25,6 +25,14 @@ async function req<T>(path: string, fallback: T): Promise<T> {
     console.error(`OpenF1 request failed (${path}):`, error);
     return fallback;
   }
+}
+
+// Strict helper — throws on any error. Use for session detection so callers
+// can distinguish "API down / rate-limited" from "no session found".
+async function reqStrict<T>(path: string): Promise<T> {
+  const res = await fetch(`${OPENF1_BASE_URL}${path}`, AUTH_HEADERS ? { headers: AUTH_HEADERS } : undefined);
+  if (!res.ok) throw new Error(`OpenF1 ${res.status}: ${path}`);
+  return (await res.json()) as T;
 }
 
 export const openf1Api = {
@@ -70,20 +78,34 @@ export const openf1Api = {
   getCarData: (sessionKey: number, driverNumber: number, dateGt: string, dateLt: string) =>
     req(`/car_data?session_key=${sessionKey}&driver_number=${driverNumber}&date>${dateGt}&date<${dateLt}`, []),
 
-  async getLatestSession(type: 'Practice' | 'Qualifying' | 'Race') {
-    const sessions = await req<OpenF1Session[]>(`/sessions?session_type=${type}`, []);
+  // Returns the most recent past session of a given type (and optional name).
+  // Uses reqStrict so callers can catch API errors (e.g. 429) vs "no session found".
+  async getLatestSession(
+    type: 'Practice' | 'Qualifying' | 'Race',
+    nameFilter?: string,
+  ): Promise<OpenF1Session | null> {
+    const sessions = await reqStrict<OpenF1Session[]>(`/sessions?session_type=${type}`);
     if (!sessions.length) return null;
     const now = new Date();
-    const past = sessions.filter((s) => s.date_start && new Date(s.date_start) <= now);
+    let past = sessions.filter((s) => s.date_start && new Date(s.date_start) <= now);
+    if (nameFilter) past = past.filter((s) => s.session_name === nameFilter);
     if (!past.length) return null;
     return past.reduce((best, s) =>
       new Date(s.date_start) > new Date(best.date_start) ? s : best
     );
   },
 
-  // All qualifying sessions for a given year — used by QualifyingPage historical mode.
+  // Standard qualifying sessions for a given year.
   getQualifyingSessions: (year: number) =>
     req<OpenF1Session[]>(`/sessions?year=${year}&session_type=Qualifying`, []),
+
+  // Sprint Qualifying (Shootout) sessions for a given year.
+  getSprintQualifyingSessions: (year: number) =>
+    req<OpenF1Session[]>(`/sessions?year=${year}&session_name=Sprint Shootout`, []),
+
+  // Sprint Race sessions for a given year.
+  getSprintSessions: (year: number) =>
+    req<OpenF1Session[]>(`/sessions?year=${year}&session_name=Sprint`, []),
 
   // The single most-recent session of any type (OpenF1's `latest` keyword). Used to
   // decide whether anything is live right now for the sidebar indicator.

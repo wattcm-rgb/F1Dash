@@ -215,9 +215,9 @@ describe('getLatestSession()', () => {
     expect(await openf1Api.getLatestSession('Race')).toBeNull();
   });
 
-  it('returns null when the request fails (fallback → empty array)', async () => {
+  it('throws on a non-2xx status (Phase 0.2: getLatestSession uses reqStrict, not the safe fallback)', async () => {
     mockHttpError(500);
-    expect(await openf1Api.getLatestSession('Race')).toBeNull();
+    await expect(openf1Api.getLatestSession('Race')).rejects.toThrow('OpenF1 500');
   });
 
   it('returns the single past session when only one exists', async () => {

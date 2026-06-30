@@ -20,6 +20,14 @@ export default function QualifyingLeaderboard({ drivers, segmentLaps, allLaps, s
     );
   }
 
+  if (!segmentLaps.length) {
+    return (
+      <div className="glass" style={{ padding: '48px 0', textAlign: 'center', color: '#334155', fontSize: 13 }}>
+        This segment has not started yet.
+      </div>
+    );
+  }
+
   const ob = overallBests(segmentLaps);
 
   // Build per-driver best for this segment; drivers with no laps in this segment get nulls.

@@ -6,16 +6,18 @@ import qualifyingIcon from '../icons/qualifying_icon.png';
 import raceIcon from '../icons/race_icon.png';
 import calendarIcon from '../icons/calendar_icon.png';
 
-interface NavItem { to: string; label: string; icon?: string; home?: boolean; news?: boolean; live?: boolean; standings?: boolean; }
+interface NavItem { to: string; label: string; icon?: string; home?: boolean; news?: boolean; live?: boolean; standings?: boolean; sprint?: boolean; sprintQual?: boolean; }
 
 const NAV: NavItem[] = [
-  { to: '/',            label: 'Home',       home: true },
-  { to: '/live',        label: 'Live',       live: true },
-  { to: '/race',        label: 'Race',       icon: raceIcon },
-  { to: '/qualifying',  label: 'Qualifying', icon: qualifyingIcon },
-  { to: '/standings',   label: 'Standings',  standings: true },
-  { to: '/calendar',    label: 'Calendar',   icon: calendarIcon },
-  { to: '/news',        label: 'News',       news: true },
+  { to: '/',                   label: 'Home',             home: true },
+  { to: '/live',               label: 'Live',             live: true },
+  { to: '/race',               label: 'Race',             icon: raceIcon },
+  { to: '/sprint',             label: 'Sprint',           sprint: true },
+  { to: '/qualifying',         label: 'Qualifying',       icon: qualifyingIcon },
+  { to: '/sprint-qualifying',  label: 'Sprint Qual',      sprintQual: true },
+  { to: '/standings',          label: 'Standings',        standings: true },
+  { to: '/calendar',           label: 'Calendar',         icon: calendarIcon },
+  { to: '/news',               label: 'News',             news: true },
 ];
 
 function NewsIcon({ size, active }: { size: number; active: boolean }) {
@@ -62,6 +64,39 @@ function PodiumIcon({ size, active }: { size: number; active: boolean }) {
         stroke="none" fill="currentColor" fontFamily="sans-serif">2</text>
       <text x="19"   y="20" textAnchor="middle" fontSize="4" fontWeight="700"
         stroke="none" fill="currentColor" fontFamily="sans-serif">3</text>
+    </svg>
+  );
+}
+
+function SprintIcon({ size, active }: { size: number; active: boolean }) {
+  return (
+    <svg
+      width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+      style={{ filter: active ? 'drop-shadow(0 0 4px rgba(168,85,247,0.6))' : 'none' }}
+    >
+      {/* lightning bolt */}
+      <path d="M13 2 L6 13 H12 L11 22 L18 11 H12 Z" />
+    </svg>
+  );
+}
+
+function SprintQualIcon({ size, active }: { size: number; active: boolean }) {
+  return (
+    <svg
+      width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+      style={{ filter: active ? 'drop-shadow(0 0 4px rgba(168,85,247,0.6))' : 'none' }}
+    >
+      {/* stopwatch */}
+      <circle cx="12" cy="13" r="8" />
+      <path d="M12 5V2" />
+      <path d="M10 2h4" />
+      <path d="M12 13 L12 9" />
+      <path d="M16.5 8.5 L18 7" />
+      {/* S overlay */}
+      <text x="8.5" y="17" fontSize="7" fontWeight="800"
+        stroke="none" fill="currentColor" fontFamily="sans-serif">SQ</text>
     </svg>
   );
 }
@@ -143,6 +178,10 @@ export default function Layout() {
                     ? <PodiumIcon size={24} active={active} />
                     : item.news
                     ? <NewsIcon size={24} active={active} />
+                    : item.sprint
+                    ? <SprintIcon size={24} active={active} />
+                    : item.sprintQual
+                    ? <SprintQualIcon size={24} active={active} />
                     : <img src={item.icon} alt="" style={{ width: 24, height: 24, opacity: 1, filter: active ? 'drop-shadow(0 0 4px rgba(168,85,247,0.6))' : 'none' }} />}
                   {item.label}
                 </div>
@@ -181,6 +220,10 @@ export default function Layout() {
                 ? <PodiumIcon size={28} active={active} />
                 : item.news
                 ? <NewsIcon size={28} active={active} />
+                : item.sprint
+                ? <SprintIcon size={28} active={active} />
+                : item.sprintQual
+                ? <SprintQualIcon size={28} active={active} />
                 : <img src={item.icon} alt="" />}
               {item.label}
             </Link>

@@ -8,7 +8,7 @@ import RaceTabs from '../components/race/RaceTabs';
 import { latestFlag, flagColor } from '../components/race/derive';
 import type { PitStop, PositionRow, Interval, RcMsg, LocationPt } from '../components/race/types';
 
-export default function LivePage() {
+export default function SprintPage() {
   const [session, setSession] = useState<OpenF1Session | null>(null);
   const [isLive, setIsLive] = useState(false);
   const [detecting, setDetecting] = useState(true);
@@ -22,7 +22,6 @@ export default function LivePage() {
   const [rcMsgs, setRcMsgs] = useState<RcMsg[]>([]);
   const [weather, setWeather] = useState<OpenF1Weather | null>(null);
 
-  // live track trails (driver -> recent points)
   const trailsRef = useRef<Map<number, { x: number; y: number }[]>>(new Map());
   const [trailSnapshot, setTrailSnapshot] = useState<Map<number, { x: number; y: number }[]>>(new Map());
   const lastLocFetch = useRef<string | null>(null);
@@ -33,10 +32,11 @@ export default function LivePage() {
 
   const detectSession = useCallback(async () => {
     try {
-      const s = await openf1Api.getLatestSession('Race', 'Race');
+      // Sprint races have session_type=Race, session_name=Sprint
+      const s = await openf1Api.getLatestSession('Race', 'Sprint');
       setSession(s);
       setIsLive(s ? isLiveSession(s) : false);
-    } catch { /* API error — leave previous state, try again next interval */ }
+    } catch { /* non-fatal */ }
     finally { setDetecting(false); }
   }, []);
 
@@ -106,7 +106,7 @@ export default function LivePage() {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span className="f1-heading" style={{ fontSize: 17, color: '#f1f5f9' }}>
-              {session ? `${sessionLabel(session)} · Race` : 'Live Race'}
+              {session ? `${sessionLabel(session)} · Sprint` : 'Live Sprint'}
             </span>
             {detecting
               ? <span style={{ fontSize: 10, background: 'rgba(100,116,139,0.1)', color: '#475569', border: '1px solid rgba(100,116,139,0.2)', padding: '2px 7px', borderRadius: 4, fontWeight: 700, letterSpacing: '0.08em' }}>CHECKING</span>
@@ -130,11 +130,11 @@ export default function LivePage() {
       </div>
 
       {detecting ? (
-        <StatusBanner tone="grey">Checking for a live session…</StatusBanner>
+        <StatusBanner tone="grey">Checking for a live sprint…</StatusBanner>
       ) : !isLive ? (
         <StatusBanner tone="amber">
-          No live race right now — live timing populates automatically when a race goes green.
-          {session && ` Last race: ${sessionLabel(session)}.`}
+          No live sprint right now — live timing populates automatically when the sprint goes green.
+          {session && ` Last sprint: ${sessionLabel(session)}.`}
         </StatusBanner>
       ) : null}
 

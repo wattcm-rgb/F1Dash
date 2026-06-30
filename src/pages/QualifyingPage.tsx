@@ -1,10 +1,10 @@
-import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { openf1Api } from '../services/openf1Api';
 import { jolpicaApi } from '../services/jolpicaApi';
-import type { OpenF1Session, OpenF1Driver } from '../types/openf1';
-import { isLiveSession, sessionLabel } from '../types/openf1';
-import type { QualLap, Segment } from '../components/qualifying/types';
-import { detectSegments } from '../components/qualifying/derive';
+import type { OpenF1Session } from '../types/openf1';
+import { sessionLabel } from '../types/openf1';
+import type { Segment } from '../components/qualifying/types';
+import { useQualifyingSession } from '../hooks/useQualifyingSession';
 import QualifyingLeaderboard from '../components/qualifying/QualifyingLeaderboard';
 
 // ─── Jolpica fallback (years < 2023) ──────────────────────────────────────────
@@ -161,115 +161,31 @@ const OPENF1_START_YEAR = 2023;
 const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = Array.from({ length: CURRENT_YEAR - 2017 }, (_, i) => CURRENT_YEAR - i);
 
+const fetchQualSessions = (year: number) =>
+  openf1Api.getQualifyingSessions(year).then((sessions: OpenF1Session[]) =>
+    sessions.filter(s => s.session_name === 'Qualifying'),
+  );
+
 export default function QualifyingPage() {
   const [year, setYear] = useState(CURRENT_YEAR);
   const useOpenF1 = year >= OPENF1_START_YEAR;
 
-  // ── Live detection ──
-  const [liveSession, setLiveSession] = useState<OpenF1Session | null>(null);
-  const [isLive, setIsLive] = useState(false);
-  const [detecting, setDetecting] = useState(true);
+  const fetchSessions = useCallback(fetchQualSessions, []);
 
-  const detectSession = useCallback(async () => {
-    try {
-      const s = await openf1Api.getLatestSession('Qualifying');
-      setLiveSession(s);
-      setIsLive(s ? isLiveSession(s) : false);
-    } catch { /* non-fatal */ }
-    finally { setDetecting(false); }
-  }, []);
-
-  useEffect(() => {
-    detectSession();
-    const t = window.setInterval(detectSession, 30_000);
-    return () => clearInterval(t);
-  }, [detectSession]);
-
-  // ── OpenF1 session list for the selected year ──
-  const [qualSessions, setQualSessions] = useState<OpenF1Session[]>([]);
-  const [selectedSessionKey, setSelectedSessionKey] = useState<number | null>(null);
-  const [sessionsLoading, setSessionsLoading] = useState(false);
-
-  useEffect(() => {
-    if (!useOpenF1) return;
-    setQualSessions([]); setSelectedSessionKey(null); setSessionsLoading(true);
-    openf1Api.getQualifyingSessions(year)
-      .then((sessions: OpenF1Session[]) => {
-        const qual = sessions
-          .filter(s => s.session_name === 'Qualifying')
-          .sort((a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime());
-        setQualSessions(qual);
-        if (isLive && liveSession && liveSession.year === year) {
-          setSelectedSessionKey(liveSession.session_key);
-        } else if (qual.length) {
-          setSelectedSessionKey(qual[qual.length - 1].session_key);
-        }
-      })
-      .catch(() => {})
-      .finally(() => setSessionsLoading(false));
-  }, [year, useOpenF1, isLive, liveSession]);
-
-  // ── Lap + driver data ──
-  const [drivers, setDrivers] = useState<OpenF1Driver[]>([]);
-  const [laps, setLaps] = useState<QualLap[]>([]);
-  const [dataLoading, setDataLoading] = useState(false);
-  const [dataError, setDataError] = useState<string | null>(null);
-  const pollRef = useRef<number | null>(null);
-
-  const loadSession = useCallback(async (key: number) => {
-    setDataError(null);
-    try {
-      const [rawLaps, rawDrivers] = await Promise.all([
-        openf1Api.getLaps(key),
-        openf1Api.getDriversBySession(key),
-      ]);
-      const mappedLaps: QualLap[] = (rawLaps as Record<string, unknown>[]).map(l => ({
-        driver_number: l.driver_number as number,
-        lap_number: l.lap_number as number,
-        lap_duration: l.lap_duration as number | null,
-        sector_1: l.duration_sector_1 as number | null,
-        sector_2: l.duration_sector_2 as number | null,
-        sector_3: l.duration_sector_3 as number | null,
-        is_pit_out_lap: l.is_pit_out_lap as boolean,
-        date_start: l.date_start as string,
-      }));
-      setLaps(mappedLaps);
-      if ((rawDrivers as OpenF1Driver[]).length) setDrivers(rawDrivers as OpenF1Driver[]);
-    } catch {
-      setDataError('Failed to load qualifying data.');
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!useOpenF1 || !selectedSessionKey) { setLaps([]); setDrivers([]); return; }
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-    setDataLoading(true);
-    loadSession(selectedSessionKey).finally(() => setDataLoading(false));
-    if (isLive && liveSession?.session_key === selectedSessionKey) {
-      pollRef.current = window.setInterval(() => loadSession(selectedSessionKey), 4_000);
-    }
-    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
-  }, [selectedSessionKey, useOpenF1, isLive, liveSession, loadSession]);
-
-  // ── Segment detection ──
-  const [q1Laps, q2Laps, q3Laps] = useMemo(() => detectSegments(laps), [laps]);
-  const [segment, setSegment] = useState<Segment>('Q3');
-
-  useEffect(() => {
-    if (q3Laps.length) setSegment('Q3');
-    else if (q2Laps.length) setSegment('Q2');
-    else setSegment('Q1');
-  }, [q3Laps.length, q2Laps.length]);
-
-  const segmentLaps = segment === 'Q1' ? q1Laps : segment === 'Q2' ? q2Laps : q3Laps;
-  const selectedSession = qualSessions.find(s => s.session_key === selectedSessionKey);
+  const {
+    liveSession, isLive, detecting,
+    sessions, selectedSessionKey, setSelectedSessionKey, sessionsLoading,
+    drivers, laps, dataLoading, dataError,
+    q1Laps, q2Laps, q3Laps, segment, setSegment, segmentLaps,
+    selectedSession,
+  } = useQualifyingSession({ year: useOpenF1 ? year : 0, sessionNameFilter: 'Qualifying', fetchSessions });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
       {/* Filter bar */}
       <div className="filter-bar">
-        <select value={year} onChange={e => { setYear(Number(e.target.value)); }}>
+        <select value={year} onChange={e => setYear(Number(e.target.value))}>
           {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
 
@@ -277,12 +193,12 @@ export default function QualifyingPage() {
           <select
             value={selectedSessionKey ?? ''}
             onChange={e => setSelectedSessionKey(Number(e.target.value))}
-            disabled={sessionsLoading || !qualSessions.length}
+            disabled={sessionsLoading || !sessions.length}
             style={{ minWidth: 220 }}
           >
             {sessionsLoading && <option value="">Loading sessions…</option>}
-            {!sessionsLoading && !qualSessions.length && <option value="">No sessions found</option>}
-            {qualSessions.map(s => (
+            {!sessionsLoading && !sessions.length && <option value="">No sessions found</option>}
+            {sessions.map(s => (
               <option key={s.session_key} value={s.session_key}>
                 {sessionLabel(s)} · Qualifying
               </option>
