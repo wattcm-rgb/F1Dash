@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isLiveSession, isPastSession, sessionLabel } from '../../types/openf1';
+import { isLiveSession, isPastSession, sessionLabel, isSprintQualifyingName, sessionNameMatcher } from '../../types/openf1';
 import type { OpenF1Session } from '../../types/openf1';
 
 // ---------------------------------------------------------------------------
@@ -21,6 +21,52 @@ function makeSession(overrides: Partial<OpenF1Session> = {}): OpenF1Session {
     ...overrides,
   };
 }
+
+// ---------------------------------------------------------------------------
+// isSprintQualifyingName / sessionNameMatcher
+// The sprint-qualifying session was "Sprint Shootout" (2023) then renamed to
+// "Sprint Qualifying" (2024+); both must match.
+// ---------------------------------------------------------------------------
+
+describe('isSprintQualifyingName', () => {
+  it('matches the 2023 "Sprint Shootout" label', () => {
+    expect(isSprintQualifyingName('Sprint Shootout')).toBe(true);
+  });
+
+  it('matches the 2024+ "Sprint Qualifying" label', () => {
+    expect(isSprintQualifyingName('Sprint Qualifying')).toBe(true);
+  });
+
+  it('does not match standard "Qualifying"', () => {
+    expect(isSprintQualifyingName('Qualifying')).toBe(false);
+  });
+
+  it('does not match the sprint race "Sprint"', () => {
+    expect(isSprintQualifyingName('Sprint')).toBe(false);
+  });
+});
+
+describe('sessionNameMatcher', () => {
+  it('returns an exact matcher for a non-sprint-qual name', () => {
+    const m = sessionNameMatcher('Qualifying');
+    expect(m('Qualifying')).toBe(true);
+    expect(m('Sprint Qualifying')).toBe(false);
+    expect(m('Race')).toBe(false);
+  });
+
+  it('returns a both-label matcher when given a sprint-qual name', () => {
+    const m = sessionNameMatcher('Sprint Shootout');
+    expect(m('Sprint Shootout')).toBe(true);
+    expect(m('Sprint Qualifying')).toBe(true);
+    expect(m('Qualifying')).toBe(false);
+  });
+
+  it('treats "Sprint Qualifying" as a sprint-qual filter too', () => {
+    const m = sessionNameMatcher('Sprint Qualifying');
+    expect(m('Sprint Shootout')).toBe(true);
+    expect(m('Sprint Qualifying')).toBe(true);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // sessionLabel

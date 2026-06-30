@@ -25,6 +25,21 @@ export function isPastSession(s: OpenF1Session): boolean {
   return !!s.date_start && new Date(s.date_start) <= new Date();
 }
 
+// The sprint-qualifying session was called "Sprint Shootout" in 2023 and renamed
+// to "Sprint Qualifying" from 2024 onward. Match either label.
+export const SPRINT_QUAL_NAMES = ['Sprint Shootout', 'Sprint Qualifying'];
+
+export function isSprintQualifyingName(name: string): boolean {
+  return SPRINT_QUAL_NAMES.includes(name);
+}
+
+// Build a session_name matcher. Sprint-qualifying filters match both historical
+// labels; everything else is an exact match.
+export function sessionNameMatcher(filter: string): (name: string) => boolean {
+  if (isSprintQualifyingName(filter)) return isSprintQualifyingName;
+  return (name: string) => name === filter;
+}
+
 export interface OpenF1Driver {
   driver_number: number;
   broadcast_name: string;

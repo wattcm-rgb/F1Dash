@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { openf1Api } from '../services/openf1Api';
 import type { OpenF1Session, OpenF1Driver } from '../types/openf1';
-import { isLiveSession } from '../types/openf1';
+import { isLiveSession, isPastSession, sessionNameMatcher } from '../types/openf1';
 import type { QualLap, Segment } from '../components/qualifying/types';
 import { detectSegments } from '../components/qualifying/derive';
 
@@ -50,7 +50,7 @@ export function useQualifyingSession({ year, sessionNameFilter, fetchSessions }:
       // For standard qualifying: type='Qualifying', nameFilter='Qualifying'
       // For sprint qualifying: type='Qualifying', nameFilter='Sprint Shootout'
       const apiType = sessionNameFilter === 'Sprint' ? 'Race' : 'Qualifying';
-      const s = await openf1Api.getLatestSession(apiType, sessionNameFilter);
+      const s = await openf1Api.getLatestSession(apiType, sessionNameMatcher(sessionNameFilter));
       setLiveSession(s);
       setIsLive(s ? isLiveSession(s) : false);
     } catch { /* non-fatal — API may be temporarily down */ }
@@ -72,9 +72,12 @@ export function useQualifyingSession({ year, sessionNameFilter, fetchSessions }:
     setSessions([]); setSelectedSessionKey(null); setSessionsLoading(true);
     fetchSessions(year)
       .then((raw: OpenF1Session[]) => {
-        const sorted = [...raw].sort(
-          (a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime(),
-        );
+        // Only sessions that have already started — exclude the rest of the
+        // calendar so the default lands on the most recent completed round
+        // rather than the season finale.
+        const sorted = raw
+          .filter(isPastSession)
+          .sort((a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime());
         setSessions(sorted);
         if (isLive && liveSession && liveSession.year === year) {
           setSelectedSessionKey(liveSession.session_key);

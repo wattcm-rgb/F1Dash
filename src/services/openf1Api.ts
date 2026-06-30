@@ -1,4 +1,5 @@
 import type { OpenF1Session } from '../types/openf1';
+import { isSprintQualifyingName } from '../types/openf1';
 
 // Default to the public OpenF1 API (HTTPS, no mixed-content issues on GitHub Pages).
 // Override the base URL with VITE_OPENF1_BASE_URL if proxying through your own host.
@@ -100,17 +101,22 @@ export const openf1Api = {
   getIntervalsSince: (sessionKey: number, since: string) =>
     req(`/intervals?session_key=${sessionKey}&date>${since}`, []),
 
-  // Returns the most recent past session of a given type (and optional name).
-  // Uses reqStrict so callers can catch API errors (e.g. 429) vs "no session found".
+  // Returns the most recent past session of a given type, optionally filtered by
+  // session_name (an exact string, or a predicate for matching multiple labels —
+  // e.g. the renamed sprint-qualifying session). Uses reqStrict so callers can
+  // distinguish API errors (e.g. 429) from "no session found".
   async getLatestSession(
     type: 'Practice' | 'Qualifying' | 'Race',
-    nameFilter?: string,
+    nameFilter?: string | ((name: string) => boolean),
   ): Promise<OpenF1Session | null> {
     const sessions = await reqStrict<OpenF1Session[]>(`/sessions?session_type=${type}`);
     if (!sessions.length) return null;
     const now = new Date();
     let past = sessions.filter((s) => s.date_start && new Date(s.date_start) <= now);
-    if (nameFilter) past = past.filter((s) => s.session_name === nameFilter);
+    if (nameFilter) {
+      const pred = typeof nameFilter === 'string' ? (n: string) => n === nameFilter : nameFilter;
+      past = past.filter((s) => pred(s.session_name));
+    }
     if (!past.length) return null;
     return past.reduce((best, s) =>
       new Date(s.date_start) > new Date(best.date_start) ? s : best
@@ -121,9 +127,13 @@ export const openf1Api = {
   getQualifyingSessions: (year: number) =>
     req<OpenF1Session[]>(`/sessions?year=${year}&session_type=Qualifying`, []),
 
-  // Sprint Qualifying (Shootout) sessions for a given year.
+  // Sprint Qualifying sessions for a given year. The session was named
+  // "Sprint Shootout" in 2023 and "Sprint Qualifying" from 2024; fetch the whole
+  // year and match either label client-side.
   getSprintQualifyingSessions: (year: number) =>
-    req<OpenF1Session[]>(`/sessions?year=${year}&session_name=Sprint Shootout`, []),
+    req<OpenF1Session[]>(`/sessions?year=${year}`, []).then((ss) =>
+      ss.filter((s) => isSprintQualifyingName(s.session_name)),
+    ),
 
   // Sprint Race sessions for a given year.
   getSprintSessions: (year: number) =>

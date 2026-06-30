@@ -40,11 +40,14 @@ describe('LiveQualView (Qualifying)', () => {
     expect(screen.getByText(/checking for a live session/i)).not.toBeNull();
   });
 
-  it('detects using session_type=Qualifying and session_name=Qualifying', async () => {
+  it('detects using session_type=Qualifying with a name predicate matching only "Qualifying"', async () => {
     vi.mocked(openf1Api.getLatestSession).mockResolvedValue(null);
     render(<LiveQualView kind="Qualifying" />);
     await flush();
-    expect(openf1Api.getLatestSession).toHaveBeenCalledWith('Qualifying', 'Qualifying');
+    expect(openf1Api.getLatestSession).toHaveBeenCalledWith('Qualifying', expect.any(Function));
+    const pred = vi.mocked(openf1Api.getLatestSession).mock.calls[0][1] as (n: string) => boolean;
+    expect(pred('Qualifying')).toBe(true);
+    expect(pred('Sprint Qualifying')).toBe(false);
   });
 
   it('shows the "No live qualifying right now" banner when nothing is live', async () => {
@@ -67,11 +70,15 @@ describe('LiveQualView (Sprint Shootout)', () => {
     expect(screen.getByText('Live Sprint Qualifying')).not.toBeNull();
   });
 
-  it('detects using session_name=Sprint Shootout', async () => {
+  it('detects with a name predicate matching both sprint-qualifying labels', async () => {
     vi.mocked(openf1Api.getLatestSession).mockResolvedValue(null);
     render(<LiveQualView kind="Sprint Shootout" />);
     await flush();
-    expect(openf1Api.getLatestSession).toHaveBeenCalledWith('Qualifying', 'Sprint Shootout');
+    expect(openf1Api.getLatestSession).toHaveBeenCalledWith('Qualifying', expect.any(Function));
+    const pred = vi.mocked(openf1Api.getLatestSession).mock.calls[0][1] as (n: string) => boolean;
+    expect(pred('Sprint Shootout')).toBe(true);   // 2023 label
+    expect(pred('Sprint Qualifying')).toBe(true);  // 2024+ label
+    expect(pred('Qualifying')).toBe(false);
   });
 
   it('shows the "No live sprint qualifying right now" banner when nothing is live', async () => {

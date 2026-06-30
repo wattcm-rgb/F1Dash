@@ -265,6 +265,45 @@ describe('getLatestSession()', () => {
 });
 
 // ---------------------------------------------------------------------------
+// getLatestSession() with a name predicate (sprint-qualifying rename support)
+// ---------------------------------------------------------------------------
+
+describe('getLatestSession() with a name predicate', () => {
+  it('filters by a predicate matching either sprint-qualifying label', async () => {
+    const shootout2023 = makeSession({ session_key: 1, session_type: 'Qualifying', session_name: 'Sprint Shootout', date_start: '2023-04-01T00:00:00' });
+    const sprintQual2024 = makeSession({ session_key: 2, session_type: 'Qualifying', session_name: 'Sprint Qualifying', date_start: '2024-04-01T00:00:00' });
+    const standardQual = makeSession({ session_key: 3, session_type: 'Qualifying', session_name: 'Qualifying', date_start: '2024-05-01T00:00:00' });
+    mockOk([shootout2023, sprintQual2024, standardQual]);
+    const pred = (n: string) => n === 'Sprint Shootout' || n === 'Sprint Qualifying';
+    const result = await openf1Api.getLatestSession('Qualifying', pred);
+    // Most recent matching = the 2024 Sprint Qualifying, NOT the standard Qualifying
+    expect(result?.session_key).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getSprintQualifyingSessions() — matches both historical labels
+// ---------------------------------------------------------------------------
+
+describe('getSprintQualifyingSessions()', () => {
+  it('fetches the whole year (no session_name query param)', async () => {
+    mockOk([]);
+    await openf1Api.getSprintQualifyingSessions(2024);
+    expect(calledUrl()).toBe(`${BASE}/sessions?year=2024`);
+  });
+
+  it('keeps both "Sprint Shootout" and "Sprint Qualifying" and drops others', async () => {
+    const shootout = makeSession({ session_key: 1, session_name: 'Sprint Shootout' });
+    const sprintQual = makeSession({ session_key: 2, session_name: 'Sprint Qualifying' });
+    const standardQual = makeSession({ session_key: 3, session_name: 'Qualifying' });
+    const sprintRace = makeSession({ session_key: 4, session_name: 'Sprint' });
+    mockOk([shootout, sprintQual, standardQual, sprintRace]);
+    const result = await openf1Api.getSprintQualifyingSessions(2024);
+    expect(result.map(s => s.session_key)).toEqual([1, 2]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // getCurrentSession()
 // ---------------------------------------------------------------------------
 
