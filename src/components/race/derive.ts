@@ -111,6 +111,50 @@ export function latestFlag(msgs: RcMsg[]): RcMsg | null {
   return flags.length ? flags[flags.length - 1] : null;
 }
 
+// Linear regression slope (seconds/lap) of lap times within a single stint.
+// Positive = getting slower (normal tyre deg). Returns null when < 4 clean laps.
+export function tyreDegRate(
+  dn: number,
+  stintNum: number,
+  laps: OpenF1Lap[],
+  stints: OpenF1Stint[],
+): number | null {
+  const stint = stints.find(s => s.driver_number === dn && s.stint_number === stintNum);
+  if (!stint) return null;
+
+  const stintEnd = stint.lap_end ?? Infinity;
+  const stintLaps = laps
+    .filter(l =>
+      l.driver_number === dn &&
+      l.lap_number >= stint.lap_start &&
+      l.lap_number <= stintEnd &&
+      !l.is_pit_out_lap &&
+      l.lap_duration != null &&
+      l.lap_duration > 0,
+    )
+    .sort((a, b) => a.lap_number - b.lap_number);
+
+  if (stintLaps.length < 4) return null;
+
+  // Exclude laps > 110% of median (safety car, crash, etc.)
+  const sorted = [...stintLaps].sort((a, b) => a.lap_duration! - b.lap_duration!);
+  const median = sorted[Math.floor(sorted.length / 2)].lap_duration!;
+  const clean = stintLaps.filter(l => l.lap_duration! <= median * 1.1);
+  if (clean.length < 4) return null;
+
+  // Ordinary least-squares slope, x = lap offset within stint, y = lap time
+  const xs = clean.map(l => l.lap_number - stint.lap_start);
+  const ys = clean.map(l => l.lap_duration!);
+  const n = xs.length;
+  const sumX = xs.reduce((a, b) => a + b, 0);
+  const sumY = ys.reduce((a, b) => a + b, 0);
+  const sumXY = xs.reduce((acc, x, i) => acc + x * ys[i], 0);
+  const sumX2 = xs.reduce((acc, x) => acc + x * x, 0);
+  const denom = n * sumX2 - sumX * sumX;
+  if (denom === 0) return null;
+  return (n * sumXY - sumX * sumY) / denom;
+}
+
 export function sectorFlagMap(msgs: RcMsg[]): Record<number, string> {
   const out: Record<number, string> = {};
   for (const m of msgs) if (m.flag && m.sector != null && m.sector > 0) out[m.sector] = m.flag;

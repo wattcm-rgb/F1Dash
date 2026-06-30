@@ -15,10 +15,21 @@ const AUTH_HEADERS: HeadersInit | undefined = OPENF1_TOKEN
   ? { Authorization: `Bearer ${OPENF1_TOKEN}` }
   : undefined;
 
+// Module-level rate-limit backoff state. When the API returns 429, all safe
+// requests are skipped for 30 s. Strict requests (session detection) still throw.
+let rateLimitedUntil = 0;
+export function isRateLimited(): boolean { return Date.now() < rateLimitedUntil; }
+
 // Safe helper — on any error logs and returns the fallback. Use for data polling.
 async function req<T>(path: string, fallback: T): Promise<T> {
+  if (Date.now() < rateLimitedUntil) return fallback; // skip while throttled
   try {
     const res = await fetch(`${OPENF1_BASE_URL}${path}`, AUTH_HEADERS ? { headers: AUTH_HEADERS } : undefined);
+    if (res.status === 429) {
+      rateLimitedUntil = Date.now() + 30_000;
+      console.warn('OpenF1 rate limited — pausing requests for 30 s');
+      return fallback;
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return (await res.json()) as T;
   } catch (error) {
@@ -77,6 +88,17 @@ export const openf1Api = {
 
   getCarData: (sessionKey: number, driverNumber: number, dateGt: string, dateLt: string) =>
     req(`/car_data?session_key=${sessionKey}&driver_number=${driverNumber}&date>${dateGt}&date<${dateLt}`, []),
+
+  // Delta-fetch variants — only return rows with date > since. Use in live polling
+  // to merge new rows into existing state instead of replacing the whole array.
+  getLapsSince: (sessionKey: number, since: string) =>
+    req(`/laps?session_key=${sessionKey}&date>${since}`, []),
+
+  getPositionsSince: (sessionKey: number, since: string) =>
+    req(`/position?session_key=${sessionKey}&date>${since}`, []),
+
+  getIntervalsSince: (sessionKey: number, since: string) =>
+    req(`/intervals?session_key=${sessionKey}&date>${since}`, []),
 
   // Returns the most recent past session of a given type (and optional name).
   // Uses reqStrict so callers can catch API errors (e.g. 429) vs "no session found".

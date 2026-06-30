@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { openf1Api } from '../services/openf1Api';
+import { openf1Api, isRateLimited } from '../services/openf1Api';
 import type { OpenF1Session, OpenF1Driver, OpenF1Lap, OpenF1Stint, OpenF1Weather } from '../types/openf1';
 import { isLiveSession, sessionLabel } from '../types/openf1';
 import WeatherChip from '../components/WeatherChip';
@@ -8,10 +8,31 @@ import RaceTabs from '../components/race/RaceTabs';
 import { latestFlag, flagColor } from '../components/race/derive';
 import type { PitStop, PositionRow, Interval, RcMsg, LocationPt } from '../components/race/types';
 
+// Merge incoming rows into existing array by dedup key, newest wins.
+function mergeLaps(prev: OpenF1Lap[], next: OpenF1Lap[]): OpenF1Lap[] {
+  const map = new Map(prev.map(l => [`${l.driver_number}_${l.lap_number}`, l]));
+  for (const l of next) map.set(`${l.driver_number}_${l.lap_number}`, l);
+  return Array.from(map.values());
+}
+function mergePositions(prev: PositionRow[], next: PositionRow[]): PositionRow[] {
+  return [...prev, ...next]; // append — no dedup needed, we only fetch new ones
+}
+function mergeIntervals(prev: Interval[], next: Interval[]): Interval[] {
+  const map = new Map(prev.map(iv => [iv.driver_number, iv]));
+  for (const iv of next) map.set(iv.driver_number, iv);
+  return Array.from(map.values());
+}
+
+// Fast poll — intervals, positions, location (change every few seconds during race)
+const FAST_INTERVAL = 8_000;
+// Slow poll — laps, stints, pit stops, race control, weather, drivers (change infrequently)
+const SLOW_INTERVAL = 30_000;
+
 export default function LivePage() {
   const [session, setSession] = useState<OpenF1Session | null>(null);
   const [isLive, setIsLive] = useState(false);
   const [detecting, setDetecting] = useState(true);
+  const [rateLimited, setRateLimited] = useState(false);
 
   const [drivers, setDrivers] = useState<OpenF1Driver[]>([]);
   const [laps, setLaps] = useState<OpenF1Lap[]>([]);
@@ -22,21 +43,26 @@ export default function LivePage() {
   const [rcMsgs, setRcMsgs] = useState<RcMsg[]>([]);
   const [weather, setWeather] = useState<OpenF1Weather | null>(null);
 
-  // live track trails (driver -> recent points)
   const trailsRef = useRef<Map<number, { x: number; y: number }[]>>(new Map());
   const [trailSnapshot, setTrailSnapshot] = useState<Map<number, { x: number; y: number }[]>>(new Map());
   const lastLocFetch = useRef<string | null>(null);
 
+  // Delta-fetch cursors — date of latest row seen per endpoint
+  const lastLapDate = useRef<string | null>(null);
+  const lastPosDate = useRef<string | null>(null);
+  const lastIvDate = useRef<string | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [updated, setUpdated] = useState<Date | null>(null);
-  const pollRef = useRef<number | null>(null);
+  const fastPollRef = useRef<number | null>(null);
+  const slowPollRef = useRef<number | null>(null);
 
   const detectSession = useCallback(async () => {
     try {
       const s = await openf1Api.getLatestSession('Race', 'Race');
       setSession(s);
       setIsLive(s ? isLiveSession(s) : false);
-    } catch { /* API error — leave previous state, try again next interval */ }
+    } catch { /* non-fatal — try again next interval */ }
     finally { setDetecting(false); }
   }, []);
 
@@ -53,49 +79,110 @@ export default function LivePage() {
     const pts = await openf1Api.getLocation(key, since) as LocationPt[];
     if (!pts.length) return;
     lastLocFetch.current = pts[pts.length - 1].date;
-    const updated = new Map(trailsRef.current);
+    const upd = new Map(trailsRef.current);
     for (const p of pts) {
-      const arr = updated.get(p.driver_number) ?? [];
+      const arr = upd.get(p.driver_number) ?? [];
       arr.push({ x: p.x, y: p.y });
       if (arr.length > 12) arr.splice(0, arr.length - 12);
-      updated.set(p.driver_number, arr);
+      upd.set(p.driver_number, arr);
     }
-    trailsRef.current = updated;
-    setTrailSnapshot(new Map(updated));
+    trailsRef.current = upd;
+    setTrailSnapshot(new Map(upd));
   }, []);
 
-  const fetchAll = useCallback(async (key: number) => {
-    const [l, st, d, pit, iv, rc, wx, pos] = await Promise.all([
-      openf1Api.getLaps(key),
+  // Fast poll: intervals, positions, location — changes every few seconds
+  const fetchFast = useCallback(async (key: number) => {
+    setRateLimited(isRateLimited());
+    if (isRateLimited()) return;
+
+    const sincePosStr = lastPosDate.current
+      ? new Date(new Date(lastPosDate.current).getTime() + 1).toISOString().replace('Z', '')
+      : undefined;
+    const sinceIvStr = lastIvDate.current
+      ? new Date(new Date(lastIvDate.current).getTime() + 1).toISOString().replace('Z', '')
+      : undefined;
+
+    const [newIv, newPos] = await Promise.all([
+      sinceIvStr
+        ? openf1Api.getIntervalsSince(key, sinceIvStr)
+        : openf1Api.getIntervals(key),
+      sincePosStr
+        ? openf1Api.getPositionsSince(key, sincePosStr)
+        : openf1Api.getPositions(key),
+    ]);
+
+    const ivArr = newIv as Interval[];
+    const posArr = newPos as PositionRow[];
+
+    if (ivArr.length) {
+      setIntervals(prev => mergeIntervals(prev, ivArr));
+      // Intervals don't have a date field in our type — no cursor to update
+    }
+    if (posArr.length) {
+      setPositions(prev => mergePositions(prev, posArr));
+      const lastPos = posArr[posArr.length - 1] as unknown as { date?: string };
+      if (lastPos.date) lastPosDate.current = lastPos.date;
+    }
+
+    await fetchLocation(key);
+    setUpdated(new Date());
+  }, [fetchLocation]);
+
+  // Slow poll: laps, stints, pit stops, race control, weather, drivers
+  const fetchSlow = useCallback(async (key: number) => {
+    if (isRateLimited()) return;
+
+    const sinceLapStr = lastLapDate.current
+      ? new Date(new Date(lastLapDate.current).getTime() + 1).toISOString().replace('Z', '')
+      : undefined;
+
+    const [newLaps, st, d, pit, rc, wx] = await Promise.all([
+      sinceLapStr
+        ? openf1Api.getLapsSince(key, sinceLapStr)
+        : openf1Api.getLaps(key),
       openf1Api.getStints(key),
       openf1Api.getDriversBySession(key),
       openf1Api.getPitStops(key),
-      openf1Api.getIntervals(key),
       openf1Api.getRaceControlMessages(key),
       openf1Api.getWeather(key),
-      openf1Api.getPositions(key),
     ]);
-    setLaps(l as OpenF1Lap[]);
+
+    const lapArr = newLaps as OpenF1Lap[];
+    if (lapArr.length) {
+      setLaps(prev => (sinceLapStr ? mergeLaps(prev, lapArr) : lapArr));
+      const last = lapArr[lapArr.length - 1];
+      if (last?.date_start) lastLapDate.current = last.date_start;
+    }
+
     setStints(st as OpenF1Stint[]);
     if ((d as OpenF1Driver[]).length) setDrivers(d as OpenF1Driver[]);
     setPitStops(pit as PitStop[]);
-    setIntervals(iv as Interval[]);
-    setPositions(pos as PositionRow[]);
     setRcMsgs(rc as RcMsg[]);
     const wxArr = wx as OpenF1Weather[];
     if (wxArr.length) setWeather(wxArr[wxArr.length - 1]);
-    setUpdated(new Date());
-    await fetchLocation(key);
-  }, [fetchLocation]);
+  }, []);
 
+  // Initial full load then set up staggered polling
   useEffect(() => {
     if (!session || !isLive) { if (!detecting) setLoading(false); return; }
     const key = session.session_key;
+
+    // Reset delta cursors when session changes
+    lastLapDate.current = null;
+    lastPosDate.current = null;
+    lastIvDate.current = null;
+
     setLoading(true);
-    fetchAll(key).finally(() => setLoading(false));
-    pollRef.current = window.setInterval(() => fetchAll(key), 4_000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [session, isLive, detecting, fetchAll]);
+    Promise.all([fetchFast(key), fetchSlow(key)]).finally(() => setLoading(false));
+
+    fastPollRef.current = window.setInterval(() => fetchFast(key), FAST_INTERVAL);
+    slowPollRef.current = window.setInterval(() => fetchSlow(key), SLOW_INTERVAL);
+
+    return () => {
+      if (fastPollRef.current) clearInterval(fastPollRef.current);
+      if (slowPollRef.current) clearInterval(slowPollRef.current);
+    };
+  }, [session, isLive, detecting, fetchFast, fetchSlow]);
 
   const curFlag = latestFlag(rcMsgs);
 
@@ -128,6 +215,12 @@ export default function LivePage() {
           {updated && <span style={{ fontSize: 11, color: '#334155' }}>Updated {updated.toLocaleTimeString()}</span>}
         </div>
       </div>
+
+      {rateLimited && (
+        <StatusBanner tone="amber">
+          OpenF1 rate limit reached — requests paused for 30 s. Data will resume automatically.
+        </StatusBanner>
+      )}
 
       {detecting ? (
         <StatusBanner tone="grey">Checking for a live session…</StatusBanner>

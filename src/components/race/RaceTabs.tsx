@@ -8,9 +8,11 @@ import PitStopsTab from './PitStopsTab';
 import BattleTab from './BattleTab';
 import TrackMapTab from './TrackMapTab';
 import TelemetryTab from './TelemetryTab';
+import SectorLeaderboardTab from './SectorLeaderboardTab';
+import PositionChartTab from './PositionChartTab';
 
-type Tab = 'LEADERBOARD' | 'PIT STOPS' | 'BATTLE' | 'TELEMETRY' | 'RACE CONTROL' | 'TRACK MAP';
-const TABS: Tab[] = ['LEADERBOARD', 'PIT STOPS', 'BATTLE', 'TELEMETRY', 'RACE CONTROL', 'TRACK MAP'];
+type Tab = 'LEADERBOARD' | 'PIT STOPS' | 'SECTORS' | 'BATTLE' | 'TELEMETRY' | 'RACE CONTROL' | 'TRACK MAP' | 'POSITIONS';
+const TABS: Tab[] = ['LEADERBOARD', 'PIT STOPS', 'SECTORS', 'BATTLE', 'TELEMETRY', 'RACE CONTROL', 'TRACK MAP', 'POSITIONS'];
 
 interface Props {
   mode: 'live' | 'historical';
@@ -46,8 +48,10 @@ export default function RaceTabs(props: Props) {
       {tab === 'RACE CONTROL' && <RaceControlTab rcMsgs={rcMsgs} />}
       {tab === 'PIT STOPS' && <PitStopsTab drivers={drivers} stints={stints} pitStops={pitStops} positions={positions} laps={laps} />}
       {tab === 'BATTLE' && <BattleTab drivers={drivers} laps={laps} stints={stints} pitStops={pitStops} positions={positions} />}
+      {tab === 'SECTORS' && <SectorLeaderboardTab drivers={drivers} laps={laps} />}
       {tab === 'TRACK MAP' && <TrackMapTab session={session} rcMsgs={rcMsgs} liveTrails={liveTrails} drivers={drivers} />}
       {tab === 'TELEMETRY' && <TelemetryTab sessionKey={session?.session_key ?? null} drivers={drivers} laps={laps} positions={positions} />}
+      {tab === 'POSITIONS' && <PositionChartTab drivers={drivers} laps={laps} />}
     </>
   );
 }

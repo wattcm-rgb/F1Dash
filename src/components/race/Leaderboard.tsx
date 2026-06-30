@@ -3,7 +3,7 @@ import { fmtTime, currentStint, tyreAge, driverLapStats, TYRE_COLOUR, TYRE_LABEL
 import type { PitStop, PositionRow, Interval } from './types';
 import {
   latestPositionMap, cumulativeTimes, fastestLapFor, overallFastestLap,
-  tyreHistoryFor, gapVal, fmtGap,
+  tyreHistoryFor, gapVal, fmtGap, tyreDegRate,
 } from './derive';
 import TyreChips from './TyreChips';
 
@@ -38,6 +38,7 @@ export default function Leaderboard({ mode, drivers, laps, stints, pitStops, pos
       tyreHistory: tyreHistoryFor(dn, stints, maxLaps),
       curCompound: stint?.compound ?? 'UNKNOWN',
       curAge: tyreAge(stint, stats.lapsCount),
+      curStintNum: stint?.stint_number ?? null,
       pits: pitStops.filter(p => p.driver_number === dn).length,
       fastestLap: fastestLapFor(dn, laps),
       lastLap: stats.lastLap,
@@ -116,13 +117,26 @@ export default function Leaderboard({ mode, drivers, laps, stints, pitStops, pos
                     <td style={{ textAlign: 'left' }}><span style={{ fontFamily: 'monospace', fontSize: 11, color: '#475569' }}>{i === 0 ? '—' : fmtGap(r.intervalRaw)}</span></td>
                   )}
                   <td style={{ textAlign: 'left' }}>
-                    {live ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontWeight: 700, color: TYRE_COLOUR[r.curCompound] ?? '#64748b', fontSize: 13 }}>{TYRE_LABEL[r.curCompound] ?? '?'}</span>
-                        {r.curAge > 0 && <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#475569' }}>{r.curAge}L</span>}
-                        {r.tyreHistory.length > 1 && <span style={{ opacity: 0.55 }}><TyreChips history={r.tyreHistory.slice(0, -1)} showLaps={false} /></span>}
-                      </div>
-                    ) : (
+                    {live ? (() => {
+                      const deg = r.curStintNum != null ? tyreDegRate(dn, r.curStintNum, laps, stints) : null;
+                      const degColor = deg == null ? undefined : deg < 0.05 ? '#4ade80' : deg < 0.15 ? '#facc15' : '#f87171';
+                      return (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <span style={{ fontWeight: 700, color: TYRE_COLOUR[r.curCompound] ?? '#64748b', fontSize: 13 }}>{TYRE_LABEL[r.curCompound] ?? '?'}</span>
+                              {r.curAge > 0 && <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#475569' }}>{r.curAge}L</span>}
+                            </div>
+                            {deg != null && (
+                              <div style={{ fontFamily: 'monospace', fontSize: 9, color: degColor, lineHeight: 1 }}>
+                                {deg >= 0 ? '+' : ''}{deg.toFixed(2)}s/L
+                              </div>
+                            )}
+                          </div>
+                          {r.tyreHistory.length > 1 && <span style={{ opacity: 0.55 }}><TyreChips history={r.tyreHistory.slice(0, -1)} showLaps={false} /></span>}
+                        </div>
+                      );
+                    })() : (
                       <TyreChips history={r.tyreHistory} />
                     )}
                   </td>
