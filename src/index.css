@@ -89,29 +89,39 @@ h1, h2, h3, h4, .f1-heading {
     display: flex;
     position: fixed;
     bottom: 0; left: 0; right: 0;
-    height: 64px;
+    height: 60px;
     background: rgba(5,5,20,0.92);
     backdrop-filter: blur(20px);
     border-top: 1px solid rgba(255,255,255,0.1);
     z-index: 100;
     padding: 0 4px;
+    /* Too many items to fit a phone width — scroll horizontally rather than
+       squish. Hide the scrollbar for a clean look. */
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
   }
+  .bottom-nav::-webkit-scrollbar { display: none; }
   .bottom-nav-item {
-    flex: 1;
+    flex: 0 0 auto;
+    min-width: 58px;
+    padding: 0 6px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 3px;
+    gap: 4px;
     text-decoration: none;
     color: #475569;
     font-size: 10px;
     font-weight: 600;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
     transition: color 0.15s;
   }
   .bottom-nav-item.active { color: #fff; }
-  .bottom-nav-item img { width: 28px; height: 28px; opacity: 0.7; transition: opacity 0.15s, filter 0.15s; }
+  .bottom-nav-item svg { width: 24px; height: 24px; }
+  .bottom-nav-item img { width: 24px; height: 24px; opacity: 0.7; transition: opacity 0.15s, filter 0.15s; }
   .bottom-nav-item.active img { opacity: 1; filter: drop-shadow(0 0 5px rgba(168,85,247,0.7)); }
 }
 

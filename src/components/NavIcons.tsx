@@ -7,7 +7,7 @@ export function NewsIcon({ size, active }: IconProps) {
   return (
     <svg
       width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+      stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"
       style={{ filter: active ? 'drop-shadow(0 0 4px rgba(168,85,247,0.6))' : 'none' }}
     >
       <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -20,7 +20,7 @@ export function LiveIcon({ size, active }: IconProps) {
   return (
     <svg
       width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+      stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"
       style={{ filter: active ? 'drop-shadow(0 0 5px rgba(239,68,68,0.7))' : 'none', color: active ? '#ef4444' : 'currentColor' }}
     >
       <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />
@@ -36,7 +36,7 @@ export function PodiumIcon({ size, active }: IconProps) {
   return (
     <svg
       width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+      stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"
       style={{ filter: active ? 'drop-shadow(0 0 4px rgba(168,85,247,0.6))' : 'none' }}
     >
       {/* podium steps: 2nd (left) | 1st (centre) | 3rd (right) */}
@@ -55,7 +55,7 @@ export function SprintIcon({ size, active }: IconProps) {
   return (
     <svg
       width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+      stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"
       style={{ filter: active ? 'drop-shadow(0 0 4px rgba(168,85,247,0.6))' : 'none' }}
     >
       {/* lightning bolt */}
@@ -68,7 +68,7 @@ export function SprintQualIcon({ size, active }: IconProps) {
   return (
     <svg
       width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+      stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"
       style={{ filter: active ? 'drop-shadow(0 0 4px rgba(168,85,247,0.6))' : 'none' }}
     >
       {/* stopwatch */}
@@ -88,7 +88,7 @@ export function HomeIcon({ size, active }: IconProps) {
   return (
     <svg
       width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+      stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"
       style={{ filter: active ? 'drop-shadow(0 0 4px rgba(168,85,247,0.6))' : 'none' }}
     >
       <path d="M3 10.5 12 3l9 7.5" />
