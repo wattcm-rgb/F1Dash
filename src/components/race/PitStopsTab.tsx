@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import type { OpenF1Driver, OpenF1Stint } from '../../types/openf1';
 import type { PitStop, PositionRow } from './types';
 import { latestPositionMap, cumulativeTimes, tyreHistoryFor, fastestPitFor } from './derive';
@@ -12,8 +13,8 @@ interface Props {
 }
 
 export default function PitStopsTab({ drivers, stints, pitStops, positions, laps }: Props) {
-  const latestPosition = latestPositionMap(positions);
-  const { maxLaps } = cumulativeTimes(drivers, laps as never);
+  const latestPosition = useMemo(() => latestPositionMap(positions), [positions]);
+  const { maxLaps } = useMemo(() => cumulativeTimes(drivers, laps as never), [drivers, laps]);
 
   const rows = drivers.map(d => {
     const dn = d.driver_number;

@@ -107,9 +107,11 @@ export default function LivePage() {
             <span className="f1-heading" style={{ fontSize: 17, color: '#f1f5f9' }}>
               {session ? `${sessionLabel(session)} · Race` : 'Live Race'}
             </span>
-            {isLive
-              ? <span style={{ fontSize: 10, background: 'rgba(239,68,68,0.2)', color: '#f87171', border: '1px solid rgba(239,68,68,0.4)', padding: '2px 7px', borderRadius: 4, fontWeight: 700, letterSpacing: '0.08em' }}>LIVE</span>
-              : <span style={{ fontSize: 10, background: 'rgba(100,116,139,0.15)', color: '#64748b', border: '1px solid rgba(100,116,139,0.3)', padding: '2px 7px', borderRadius: 4, fontWeight: 700, letterSpacing: '0.08em' }}>OFFLINE</span>}
+            {detecting
+              ? <span style={{ fontSize: 10, background: 'rgba(100,116,139,0.1)', color: '#475569', border: '1px solid rgba(100,116,139,0.2)', padding: '2px 7px', borderRadius: 4, fontWeight: 700, letterSpacing: '0.08em' }}>CHECKING</span>
+              : isLive
+                ? <span style={{ fontSize: 10, background: 'rgba(239,68,68,0.2)', color: '#f87171', border: '1px solid rgba(239,68,68,0.4)', padding: '2px 7px', borderRadius: 4, fontWeight: 700, letterSpacing: '0.08em' }}>LIVE</span>
+                : <span style={{ fontSize: 10, background: 'rgba(100,116,139,0.15)', color: '#64748b', border: '1px solid rgba(100,116,139,0.3)', padding: '2px 7px', borderRadius: 4, fontWeight: 700, letterSpacing: '0.08em' }}>OFFLINE</span>}
             {curFlag && (
               <span style={{ fontSize: 11, fontWeight: 700, color: flagColor(curFlag.flag), background: 'rgba(0,0,0,0.3)', padding: '2px 8px', borderRadius: 4, border: `1px solid ${flagColor(curFlag.flag)}44` }}>
                 {curFlag.flag === 'SC' ? '🚗 SC' : curFlag.flag === 'VSC' ? '🚗 VSC' : `${curFlag.flag} FLAG`}

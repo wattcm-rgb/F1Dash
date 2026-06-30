@@ -75,8 +75,15 @@ export const openf1Api = {
     if (!sessions.length) return null;
     const now = new Date();
     const past = sessions.filter((s) => s.date_start && new Date(s.date_start) <= now);
-    return past.length ? past[past.length - 1] : null;
+    if (!past.length) return null;
+    return past.reduce((best, s) =>
+      new Date(s.date_start) > new Date(best.date_start) ? s : best
+    );
   },
+
+  // All qualifying sessions for a given year — used by QualifyingPage historical mode.
+  getQualifyingSessions: (year: number) =>
+    req<OpenF1Session[]>(`/sessions?year=${year}&session_type=Qualifying`, []),
 
   // The single most-recent session of any type (OpenF1's `latest` keyword). Used to
   // decide whether anything is live right now for the sidebar indicator.

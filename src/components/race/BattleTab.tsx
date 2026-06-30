@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import type { OpenF1Driver, OpenF1Lap, OpenF1Stint } from '../../types/openf1';
 import { fmtTime, currentStint, TYRE_COLOUR, TYRE_LABEL } from '../../utils/timing';
 import type { PitStop, PositionRow } from './types';
@@ -197,8 +197,8 @@ export default function BattleTab({ drivers, laps, stints, pitStops, positions }
   const [a, setA] = useState<number | null>(null);
   const [b, setB] = useState<number | null>(null);
 
-  const latestPosition = latestPositionMap(positions);
-  const { cumTimeMap } = cumulativeTimes(drivers, laps);
+  const latestPosition = useMemo(() => latestPositionMap(positions), [positions]);
+  const { cumTimeMap } = useMemo(() => cumulativeTimes(drivers, laps), [drivers, laps]);
   const ordered = [...drivers].sort((x, y) => (latestPosition.get(x.driver_number) ?? 99) - (latestPosition.get(y.driver_number) ?? 99));
 
   const dA = drivers.find(d => d.driver_number === a);
