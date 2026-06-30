@@ -2,6 +2,7 @@ import { Outlet, Link, useLocation } from 'react-router-dom';
 import ErrorBoundary from './ErrorBoundary';
 import { useLiveSession } from '../hooks/useLiveSession';
 import { sessionLabel } from '../types/openf1';
+import { NewsIcon, LiveIcon, PodiumIcon, SprintIcon, SprintQualIcon, HomeIcon } from './NavIcons';
 import qualifyingIcon from '../icons/qualifying_icon.png';
 import raceIcon from '../icons/race_icon.png';
 import calendarIcon from '../icons/calendar_icon.png';
@@ -11,109 +12,14 @@ interface NavItem { to: string; label: string; icon?: string; home?: boolean; ne
 const NAV: NavItem[] = [
   { to: '/',                   label: 'Home',             home: true },
   { to: '/live',               label: 'Live',             live: true },
-  { to: '/race',               label: 'Race',             icon: raceIcon },
+  { to: '/sprint-qualifying',  label: 'Sprint Qual',      sprintQual: true },
   { to: '/sprint',             label: 'Sprint',           sprint: true },
   { to: '/qualifying',         label: 'Qualifying',       icon: qualifyingIcon },
-  { to: '/sprint-qualifying',  label: 'Sprint Qual',      sprintQual: true },
+  { to: '/race',               label: 'Race',             icon: raceIcon },
   { to: '/standings',          label: 'Standings',        standings: true },
   { to: '/calendar',           label: 'Calendar',         icon: calendarIcon },
   { to: '/news',               label: 'News',             news: true },
 ];
-
-function NewsIcon({ size, active }: { size: number; active: boolean }) {
-  return (
-    <svg
-      width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
-      style={{ filter: active ? 'drop-shadow(0 0 4px rgba(168,85,247,0.6))' : 'none' }}
-    >
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <path d="M7 8h10M7 12h10M7 16h6" />
-    </svg>
-  );
-}
-
-function LiveIcon({ size, active }: { size: number; active: boolean }) {
-  return (
-    <svg
-      width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
-      style={{ filter: active ? 'drop-shadow(0 0 5px rgba(239,68,68,0.7))' : 'none', color: active ? '#ef4444' : 'currentColor' }}
-    >
-      <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />
-      <path d="M8.5 8.5a5 5 0 0 0 0 7" />
-      <path d="M15.5 8.5a5 5 0 0 1 0 7" />
-      <path d="M5 5a10 10 0 0 0 0 14" />
-      <path d="M19 5a10 10 0 0 1 0 14" />
-    </svg>
-  );
-}
-
-function PodiumIcon({ size, active }: { size: number; active: boolean }) {
-  return (
-    <svg
-      width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
-      style={{ filter: active ? 'drop-shadow(0 0 4px rgba(168,85,247,0.6))' : 'none' }}
-    >
-      {/* podium steps: 2nd (left) | 1st (centre) | 3rd (right) */}
-      <path d="M2 22 V11 H8 V5 H16 V15 H22 V22 Z" />
-      <text x="11.5" y="10" textAnchor="middle" fontSize="4" fontWeight="700"
-        stroke="none" fill="currentColor" fontFamily="sans-serif">1</text>
-      <text x="5"    y="16" textAnchor="middle" fontSize="4" fontWeight="700"
-        stroke="none" fill="currentColor" fontFamily="sans-serif">2</text>
-      <text x="19"   y="20" textAnchor="middle" fontSize="4" fontWeight="700"
-        stroke="none" fill="currentColor" fontFamily="sans-serif">3</text>
-    </svg>
-  );
-}
-
-function SprintIcon({ size, active }: { size: number; active: boolean }) {
-  return (
-    <svg
-      width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
-      style={{ filter: active ? 'drop-shadow(0 0 4px rgba(168,85,247,0.6))' : 'none' }}
-    >
-      {/* lightning bolt */}
-      <path d="M13 2 L6 13 H12 L11 22 L18 11 H12 Z" />
-    </svg>
-  );
-}
-
-function SprintQualIcon({ size, active }: { size: number; active: boolean }) {
-  return (
-    <svg
-      width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
-      style={{ filter: active ? 'drop-shadow(0 0 4px rgba(168,85,247,0.6))' : 'none' }}
-    >
-      {/* stopwatch */}
-      <circle cx="12" cy="13" r="8" />
-      <path d="M12 5V2" />
-      <path d="M10 2h4" />
-      <path d="M12 13 L12 9" />
-      <path d="M16.5 8.5 L18 7" />
-      {/* S overlay */}
-      <text x="8.5" y="17" fontSize="7" fontWeight="800"
-        stroke="none" fill="currentColor" fontFamily="sans-serif">SQ</text>
-    </svg>
-  );
-}
-
-function HomeIcon({ size, active }: { size: number; active: boolean }) {
-  return (
-    <svg
-      width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
-      style={{ filter: active ? 'drop-shadow(0 0 4px rgba(168,85,247,0.6))' : 'none' }}
-    >
-      <path d="M3 10.5 12 3l9 7.5" />
-      <path d="M5 9.5V21h14V9.5" />
-      <path d="M9.5 21v-6h5v6" />
-    </svg>
-  );
-}
 
 export default function Layout() {
   const { pathname } = useLocation();

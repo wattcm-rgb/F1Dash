@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { openf1Api, isRateLimited } from '../../services/openf1Api';
+import { openf1Api } from '../../services/openf1Api';
 import type { OpenF1Session } from '../../types/openf1';
 
 const BASE = 'https://api.openf1.org/v1';
