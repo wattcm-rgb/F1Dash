@@ -53,12 +53,9 @@ describe('response passthrough', () => {
     expect(await jolpicaApi.getSeasons()).toEqual(body);
   });
 
-  it('returns whatever res.json() resolves to regardless of HTTP status (no res.ok check)', async () => {
-    // This documents the current behaviour: unlike openf1Api, there is no
-    // res.ok guard. An HTTP error with a valid JSON error body is returned as-is.
-    const errorBody = { message: 'Not Found' };
-    mockHttpError(404, errorBody);
-    expect(await jolpicaApi.getSeasons()).toEqual(errorBody);
+  it('throws on a non-2xx HTTP status (res.ok check added in Phase 0)', async () => {
+    mockHttpError(404, { message: 'Not Found' });
+    await expect(jolpicaApi.getSeasons()).rejects.toThrow('Jolpica 404');
   });
 });
 

@@ -81,11 +81,12 @@ describe('LivePage — detecting state', () => {
     expect(screen.getByText(/checking for a live session/i)).not.toBeNull();
   });
 
-  it('shows OFFLINE (not LIVE) while detecting — isLive defaults to false', () => {
+  it('shows CHECKING (not OFFLINE or LIVE) while detecting', () => {
     vi.mocked(openf1Api.getLatestSession).mockImplementation(() => new Promise(() => {}));
     render(<LivePage />);
-    // The badge is always rendered; OFFLINE is shown while detecting because isLive=false by default.
-    expect(screen.queryByText('OFFLINE')).not.toBeNull();
+    // Phase 0 fix: neutral CHECKING badge shown during detection to avoid false OFFLINE flash.
+    expect(screen.queryByText('CHECKING')).not.toBeNull();
+    expect(screen.queryByText('OFFLINE')).toBeNull();
     expect(screen.queryByText('LIVE')).toBeNull();
   });
 
