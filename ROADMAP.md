@@ -1,6 +1,6 @@
 # F1Dash — Development Roadmap
 
-Last updated: 2026-06-29
+Last updated: 2026-06-30
 
 This document captures everything identified during the test-suite build as bugs, performance issues, and missing features. Work through it top to bottom — each phase unblocks the next.
 
@@ -12,13 +12,122 @@ This document captures everything identified during the test-suite build as bugs
 |---|---|---|
 | Live race | OpenF1 | Working |
 | Historical race | OpenF1 | Working |
-| Historical qualifying | **Jolpica/Ergast** | Working — but Jolpica only has final Q1/Q2/Q3 times, **no sector times, no live mode** |
+| Historical qualifying (2023+) | OpenF1 | ✅ Done — sector times, Q1/Q2/Q3 detection, live mode, elimination zones |
+| Historical qualifying (pre-2023) | Jolpica | Working — final Q1/Q2/Q3 times only, no sector times |
 | Sprint race | — | **Missing** |
 | Sprint qualifying | — | **Missing** |
 | Sector time leaderboard | — | Missing |
 | Speed trap board | — | Missing |
 | Tyre degradation rates | — | Missing |
 | Race position fan chart | — | Missing |
+
+---
+
+## Learnings from Phase 0 + Phase 1 implementation (2026-06-30)
+
+These are concrete issues discovered during implementation that affect the remaining phases.
+
+### L.1 Phase 0.2 is still outstanding — `openf1Api.req()` still swallows errors
+
+**Status: NOT DONE.** Phase 0.1 (jolpicaApi) was completed and tested. Phase 0.2 (openf1Api `req()`) was not changed — `req()` still catches all errors and returns `[]`/`null`. During a live race, a rate-limit 429 or a Worker outage is completely invisible to the page and renders as blank data.
+
+This must be addressed before Phase 4.2 (429 backoff) is possible — backoff requires knowing that a 429 occurred.
+
+Recommended approach: add an optional `strict` flag to `req()`. Non-strict (default, used for data fetches) continues returning the fallback. Strict (used for session detection) re-throws. Alternatively, surface errors as a state field in the page and show a banner.
+
+---
+
+### L.2 `QualifyingLeaderboard` empty-segment UX gap
+
+**File:** `src/components/qualifying/QualifyingLeaderboard.tsx`
+
+The component shows the "No data for this segment yet." message only when `drivers.length === 0`. If drivers are loaded but a segment (e.g. Q2) has not started yet, the leaderboard renders all drivers with `—` in every column. This is confusing — it looks broken.
+
+**Fix:** add a second early-return when `segmentLaps.length === 0 && drivers.length > 0`:
+
+```tsx
+if (!segmentLaps.length) {
+  return (
+    <div className="glass" style={{ padding: '48px 0', textAlign: 'center', color: '#334155', fontSize: 13 }}>
+      This segment has not started yet.
+    </div>
+  );
+}
+```
+
+This also needs a test — the existing test `shows "No data for this segment yet." when drivers list is empty` does NOT cover this case.
+
+---
+
+### L.3 `getQualifyingSessions` may return Sprint Qualifying sessions
+
+**File:** `src/services/openf1Api.ts`
+
+`getQualifyingSessions(year)` queries `/sessions?year=${year}&session_type=Qualifying`. According to the session type reference table, Sprint Qualifying (`Sprint Shootout`) also has `session_type=Qualifying`. Without a `session_name` filter, sprint shootout sessions may appear in the standard qualifying dropdown.
+
+The current `QualifyingPage.tsx` does filter client-side with `s.session_name === 'Qualifying'`, which correctly excludes Sprint Shootout. This is working correctly but it's a subtle dependency: if anyone calls `getQualifyingSessions` without that client-side filter they will get unexpected results.
+
+**Fix for Phase 2:** when implementing `SprintQualifyingPage`, do not reuse `getQualifyingSessions`. Add a separate method:
+```ts
+getSprintQualifyingSessions: (year: number) =>
+  req<OpenF1Session[]>(`/sessions?year=${year}&session_name=Sprint Shootout`, []),
+```
+
+---
+
+### L.4 `detectSegments` will mis-split if there are more than two inter-segment breaks
+
+**File:** `src/components/qualifying/derive.ts`
+
+`detectSegments` uses the first two breaks > 5 minutes as Q1→Q2 and Q2→Q3 boundaries. If there is an unexpected gap within a segment (e.g. red flag stoppage, long delay after a crash), a third break point is ignored and laps are correctly split — BUT if the unexpected gap comes first, the Q1/Q2/Q3 split is wrong.
+
+**Mitigation:** For most sessions this is fine. A red flag that stops the session for > 5 min is rare in qualifying, and when it does happen the current code will misclassify some Q1 laps as Q2. 
+
+**Better approach for Phase 2 (when implementing Sprint Qualifying):** instead of taking the first two breaks, take the two *largest* gaps — those will almost always be the true segment boundaries regardless of in-session delays:
+
+```ts
+const breaks = [...allGaps].sort((a, b) => b.gap - a.gap).slice(0, 2).sort((a, b) => a.index - b.index);
+```
+
+Apply the same fix to the `detectSegments` in `qualifying/derive.ts` before implementing Sprint Qualifying (SQ1/SQ2/SQ3 have shorter segments, so in-segment red flags are proportionally more disruptive).
+
+---
+
+### L.5 Testing pattern — jsdom inline style attribute selectors
+
+Discovered during QualifyingLeaderboard tests: `querySelectorAll('tr[style*="rgba(239,68,68"]')` fails in jsdom because jsdom normalises colours in `style` attributes by adding spaces inside `rgba()` — e.g. `rgba(239, 68, 68, 0.5)`. CSS attribute selectors match the raw string exactly.
+
+**Pattern to use in all future tests:**
+```ts
+// ❌ Fragile — jsdom normalises rgb/rgba spacing
+container.querySelectorAll('[style*="rgba(239,68,68"]')
+
+// ✅ Reliable — check the DOM property directly
+const rows = Array.from(container.querySelectorAll('tbody tr')) as HTMLElement[];
+rows.filter(row => row.style.borderLeft && !row.style.borderLeft.includes('transparent'))
+```
+
+Apply this pattern to any test checking border, background, or colour via inline styles.
+
+---
+
+### L.6 `pages/QualifyingPage.test.tsx` was deferred — still needed
+
+Phase 4.4 listed `src/__tests__/pages/QualifyingPage.test.tsx` as a required test file. It was not written during Phase 1 because the page has significant complexity (two modes: OpenF1 / Jolpica, live detection, segment polling). 
+
+**Scope for the page-level test:**
+- Mock `openf1Api.getLatestSession`, `getQualifyingSessions`, `getLaps`, `getDriversBySession`
+- Mock `jolpicaApi.getRaces`, `getQualifyingResults`
+- Test: year selector switching between OpenF1 mode (2023+) and Jolpica mode (pre-2023)
+- Test: live session auto-selection when `isLiveSession()` returns true
+- Test: LIVE badge appears when session is live
+- Test: CHECKING badge shown during initial detection
+- Test: segment tabs (Q1/Q2/Q3) appear only after laps load
+- Test: Jolpica fallback renders the old table (no sector cells)
+
+This is the largest missing test gap after Phase 1.
+
+---
 
 ---
 
