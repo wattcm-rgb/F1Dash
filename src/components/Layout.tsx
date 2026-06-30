@@ -23,7 +23,9 @@ const NAV: NavItem[] = [
 
 export default function Layout() {
   const { pathname } = useLocation();
-  const isActive = (to: string) => to === '/' ? pathname === '/' : (pathname === to || pathname.startsWith(to));
+  // Exact match, or a sub-path of `to` (with a `/` boundary so `/sprint` does
+  // not match `/sprint-qualifying`).
+  const isActive = (to: string) => to === '/' ? pathname === '/' : (pathname === to || pathname.startsWith(to + '/'));
   const { session, isLive } = useLiveSession();
 
   return (
